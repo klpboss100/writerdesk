@@ -45,11 +45,20 @@ h1 a, h2 a, h3 a { display:none !important; }
     border-radius: 6px !important;
 }
 
+/* 사이드바 전체 간격 압축 */
+[data-testid="stSidebar"] .stTextInput { margin-bottom: -8px !important; }
+[data-testid="stSidebar"] .stSelectbox { margin-bottom: -8px !important; }
+[data-testid="stSidebar"] .stMultiSelect { margin-bottom: -8px !important; }
+[data-testid="stSidebar"] .stCheckbox { margin-bottom: -6px !important; }
+[data-testid="stSidebar"] .stTextArea { margin-bottom: -8px !important; }
+[data-testid="stSidebar"] .stForm { margin-bottom: -4px !important; }
+[data-testid="stSidebar"] p { margin-bottom: 2px !important; font-size:12px !important; }
+
 /* 사이드바 섹션 카드 */
 .sb-header {
     border-radius: 8px 8px 0 0;
-    padding: 8px 12px;
-    font-size: 13px;
+    padding: 5px 10px;
+    font-size: 12px;
     font-weight: 800;
     color: white;
     letter-spacing: -0.2px;
@@ -57,8 +66,8 @@ h1 a, h2 a, h3 a { display:none !important; }
 }
 .sb-body {
     border-radius: 0 0 8px 8px;
-    padding: 10px 10px 6px;
-    margin-bottom: 8px;
+    padding: 6px 8px 4px;
+    margin-bottom: 6px;
     border-top: none;
 }
 .h-must  { background: linear-gradient(90deg,#0f3460,#1a4a8a); }
@@ -330,54 +339,57 @@ with st.sidebar:
 
     # ③ 소설 설정
     sb_card("h-novel","b-novel","📖 소설 설정",
-            "시대배경+문체 설정 시 AI가 해당 시대 언어·문화에 맞게 교정합니다\n예: 1978년 서울, 조선시대")
+            "시대배경+문체 설정 시 AI가 해당 시대 언어·문화에 맞게 교정합니다")
     st.text_input("시대 배경", key="book_era",
-                  placeholder="예: 1978년 제주도, 조선 후기",
+                  placeholder="예: 1978년 제주도",
                   label_visibility="visible",
-                  help="구체적일수록 교정 정확도↑\n예: 1970년대면 '국민학교' 허용")
+                  help="예: 1970년대→국민학교 허용, 조선시대→사극체 허용")
     st.selectbox("장르", ["현대소설","역사소설","판타지","SF","로맨스",
                           "스릴러/미스터리","호러","무협","라이트노벨","기타"],
-                 key="book_genre")
-    st.selectbox("문체 스타일", ["표준 현대어","고어/사극체","방언 포함","대화체","구어체"],
-                 key="book_style",
-                 help="고어/사극체: 하오체 허용\n방언 포함: 사투리 허용\n구어체: 자연스러운 말투 우선")
+                 key="book_genre", label_visibility="collapsed")
+    # 문체 스타일 다중선택
+    style_list = st.multiselect("문체 스타일",
+        ["표준 현대어","고어/사극체","방언 포함","대화체","구어체"],
+        default=st.session_state.get("book_style_list",["표준 현대어"]),
+        key="book_style_list",
+        help="복수 선택 가능\n고어/사극체: 하오체 허용\n방언 포함: 사투리 허용",
+        label_visibility="collapsed")
+    st.session_state.book_style = ", ".join(style_list) if style_list else "표준 현대어"
     sb_card_end()
 
-    # ④ 등장인물
+    # ④ 등장인물 (이름+역할만)
     sb_card("h-char","b-char","👤 등장인물",
-            "인물의 말투를 등록하면 AI가 대사 일관성을 검사합니다\n예: 홍길동 / 주인공 / 반말+사투리")
+            "이름과 역할을 등록하면 AI가 인물별 일관성을 검사합니다")
     chars = st.session_state.characters
     with st.form("add_char", clear_on_submit=True):
         c1,c2 = st.columns(2)
-        with c1: c_name  = st.text_input("이름", placeholder="홍길동")
-        with c2: c_role  = st.text_input("역할", placeholder="주인공")
-        c_speech = st.text_input("말투", placeholder="반말, 사투리 등")
+        with c1: c_name = st.text_input("이름", placeholder="홍길동", label_visibility="collapsed")
+        with c2: c_role = st.text_input("역할", placeholder="주인공", label_visibility="collapsed")
         if st.form_submit_button("➕ 추가", use_container_width=True):
             if c_name:
-                chars.append({"name":c_name,"role":c_role,"speech":c_speech})
+                chars.append({"name":c_name,"role":c_role})
                 st.session_state.characters = chars
                 st.rerun()
     for i, ch in enumerate(chars):
         col1,col2 = st.columns([5,1])
-        with col1: st.caption(f"**{ch['name']}** {ch['role']}")
+        with col1: st.caption(f"**{ch['name']}** {ch.get('role','')}")
         with col2:
             if st.button("✕", key=f"dc{i}"):
                 chars.pop(i); st.session_state.characters=chars; st.rerun()
     sb_card_end()
 
-    # ⑤ 용어 사전
+    # ⑤ 용어 사전 (자동저장 - 버튼 없음)
     sb_card("h-term","b-term","📖 용어 사전",
-            "허용 단어: 고유명사 등 AI가 오류로 잡지 말아야 할 단어\n금지 단어: 사용하면 안 되는 단어")
-    allowed_raw = st.text_area("허용 단어 (줄바꿈 구분)",
-        value="\n".join(st.session_state.allowed_terms), height=60,
-        placeholder="예:\n갈라하드\n마나스톤")
-    banned_raw = st.text_area("금지 단어 (줄바꿈 구분)",
-        value="\n".join(st.session_state.banned_terms), height=60,
-        placeholder="예:\n안습\n레알")
-    if st.button("💾 용어 저장", use_container_width=True):
-        st.session_state.allowed_terms=[w.strip() for w in allowed_raw.splitlines() if w.strip()]
-        st.session_state.banned_terms =[w.strip() for w in banned_raw.splitlines() if w.strip()]
-        st.success("저장됨")
+            "허용 단어: 고유명사 등 AI가 오류로 잡지 말 단어\n금지 단어: 사용 금지 단어\n※ 입력 즉시 자동 저장됩니다")
+    allowed_raw = st.text_area("허용",
+        value="\n".join(st.session_state.allowed_terms), height=55,
+        placeholder="허용 단어 (줄바꿈 구분)\n예: 갈라하드")
+    banned_raw = st.text_area("금지",
+        value="\n".join(st.session_state.banned_terms), height=55,
+        placeholder="금지 단어 (줄바꿈 구분)\n예: 안습")
+    # 자동 저장 (버튼 없이 값 변경 즉시 반영)
+    st.session_state.allowed_terms=[w.strip() for w in allowed_raw.splitlines() if w.strip()]
+    st.session_state.banned_terms =[w.strip() for w in banned_raw.splitlines() if w.strip()]
     sb_card_end()
 
     # ⑥ 검사 항목
@@ -424,25 +436,16 @@ with st.sidebar:
 - 설정은 JSON으로 저장/불러오기 가능
         """)
 
-    # 설정 저장/불러오기
+    # 설정 저장
     st.markdown("---")
     export = {k:st.session_state[k] for k in
               ["book_title","book_genre","book_era","book_style",
                "characters","allowed_terms","banned_terms"]}
-    st.download_button("📤 설정 저장",
+    st.download_button("📤 설정 저장 (JSON)",
         data=json.dumps(export,ensure_ascii=False,indent=2),
         file_name=f"writerdesk_{datetime.now().strftime('%Y%m%d')}.json",
-        mime="application/json", use_container_width=True)
-    uploaded = st.file_uploader("📥 설정 불러오기", type=["json"],
-                                 label_visibility="collapsed")
-    if uploaded:
-        try:
-            imp = json.load(uploaded)
-            for k,v in imp.items():
-                if k in st.session_state: st.session_state[k]=v
-            st.success("✅ 불러오기 완료"); st.rerun()
-        except Exception as e:
-            st.error(f"오류: {e}")
+        mime="application/json", use_container_width=True,
+        help="책 제목·등장인물·용어사전 등 설정을 파일로 저장합니다.\n다음에 불러오기로 복원할 수 있습니다.")
 
 # ════════════════════════════════════════════════════════════
 # 메인 헤더
