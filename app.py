@@ -28,11 +28,8 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&family=Noto+Sans+KR:wght@300;400;500;700&family=Playfair+Display:wght@700&display=swap');
 
 h1 a, h2 a, h3 a { display:none !important; }
-/* 다크/라이트 모드 전환 버튼 표시 (숨기지 않음) */
-
-/* 툴팁이 잘리지 않도록 overflow 허용 */
-[data-testid="stSidebar"] { overflow: visible !important; }
-[data-testid="stSidebar"] > div:first-child { overflow: visible !important; }
+/* 사이드바 스크롤 정상 유지 */
+[data-testid="stSidebar"] { overflow-y: auto !important; overflow-x: hidden !important; }
 
 /* 사이드바 - 시스템 테마 따름 (강제 색상 제거) */
 [data-testid="stSidebar"] input[type="text"],
@@ -460,20 +457,23 @@ with col_left:
 
 with col_right:
     book_label = st.session_state.book_title or "제목 미설정"
-    # 프로젝트명 배지
+    chapter_name = st.text_input("챕터명", key="chapter_name",
+        placeholder="예: 제1화",
+        label_visibility="collapsed",
+        help="저장 파일명에 사용됩니다.")
+    chapter_label = chapter_name or "미설정"
+    # 프로젝트명 + 챕터명 같은 줄에 나란히
     st.markdown(f"""
-<div style='text-align:right;padding-top:6px'>
+<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px'>
   <span style='background:#e0eaff;color:#0f3460;padding:4px 12px;
-               border-radius:12px;font-size:0.8rem;font-weight:600'>
+               border-radius:12px;font-size:0.78rem;font-weight:600;white-space:nowrap'>
     📖 프로젝트: {book_label}
   </span>
+  <span style='background:#f0fdf4;color:#166534;padding:4px 12px;
+               border-radius:12px;font-size:0.78rem;font-weight:600;white-space:nowrap'>
+    📄 챕터명(파일명): {chapter_label}
+  </span>
 </div>""", unsafe_allow_html=True)
-    # 챕터명 입력 (우측 상단)
-    chapter_name = st.text_input("챕터명 (파일명용)",
-        placeholder="예: 제1화, chapter_01",
-        key="chapter_name",
-        help="저장 파일명에 사용됩니다. 예: 제1화 → '제1화_20250603.txt'로 저장")
-    # 새로 시작 버튼
     if st.button("🔄 새로 시작", use_container_width=True):
         st.session_state['_pending_reset'] = True
         st.rerun()
