@@ -28,7 +28,11 @@ st.markdown("""
 @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&family=Noto+Sans+KR:wght@300;400;500;700&family=Playfair+Display:wght@700&display=swap');
 
 h1 a, h2 a, h3 a { display:none !important; }
-[data-testid="stHeaderActionElements"] { display:none !important; }
+/* 다크/라이트 모드 전환 버튼 표시 (숨기지 않음) */
+
+/* 툴팁이 잘리지 않도록 overflow 허용 */
+[data-testid="stSidebar"] { overflow: visible !important; }
+[data-testid="stSidebar"] > div:first-child { overflow: visible !important; }
 
 /* 사이드바 - 시스템 테마 따름 (강제 색상 제거) */
 [data-testid="stSidebar"] input[type="text"],
@@ -158,17 +162,19 @@ h1 a, h2 a, h3 a { display:none !important; }
 }
 
 /* 툴팁 */
-.tt { position:relative; display:inline-block; }
+.tt { position:relative; display:inline-block; cursor:help; }
 .tt .tt-text {
     visibility:hidden; opacity:0;
-    background:#1e2540; color:#fff;
-    font-size:0.77rem; line-height:1.5;
-    border-radius:6px; padding:8px 12px;
-    position:absolute; z-index:999;
-    left:0; top:110%; width:230px;
-    transition:opacity 0.2s;
+    background:#1e293b; color:#f8fafc;
+    font-size:12px; line-height:1.6;
+    border-radius:8px; padding:10px 14px;
+    position:fixed;
+    z-index:99999;
+    width:240px;
+    transition:opacity 0.15s;
     pointer-events:none;
-    box-shadow:0 4px 12px rgba(0,0,0,0.2);
+    box-shadow:0 8px 24px rgba(0,0,0,0.3);
+    border:1px solid rgba(255,255,255,0.1);
     white-space:normal;
 }
 .tt:hover .tt-text { visibility:visible; opacity:1; }
@@ -349,7 +355,7 @@ with st.sidebar:
                  key="book_genre", label_visibility="collapsed")
     # 문체 스타일 다중선택
     style_list = st.multiselect("문체 스타일",
-        ["표준 현대어","고어/사극체","방언 포함","대화체","구어체"],
+        ["표준 현대어","고어/사극체","방언 포함","대화체"],
         default=st.session_state.get("book_style_list",["표준 현대어"]),
         key="book_style_list",
         help="복수 선택 가능\n고어/사극체: 하오체 허용\n방언 포함: 사투리 허용",
@@ -378,21 +384,7 @@ with st.sidebar:
                 chars.pop(i); st.session_state.characters=chars; st.rerun()
     sb_card_end()
 
-    # ⑤ 용어 사전 (자동저장 - 버튼 없음)
-    sb_card("h-term","b-term","📖 용어 사전",
-            "허용 단어: 고유명사 등 AI가 오류로 잡지 말 단어\n금지 단어: 사용 금지 단어\n※ 입력 즉시 자동 저장됩니다")
-    allowed_raw = st.text_area("허용",
-        value="\n".join(st.session_state.allowed_terms), height=55,
-        placeholder="허용 단어 (줄바꿈 구분)\n예: 갈라하드")
-    banned_raw = st.text_area("금지",
-        value="\n".join(st.session_state.banned_terms), height=55,
-        placeholder="금지 단어 (줄바꿈 구분)\n예: 안습")
-    # 자동 저장 (버튼 없이 값 변경 즉시 반영)
-    st.session_state.allowed_terms=[w.strip() for w in allowed_raw.splitlines() if w.strip()]
-    st.session_state.banned_terms =[w.strip() for w in banned_raw.splitlines() if w.strip()]
-    sb_card_end()
-
-    # ⑥ 검사 항목
+    # ⑤ 검사 항목
     sb_card("h-check","b-check","⚙️ 검사 항목",
             "ON 항목만 AI가 검사합니다. 항목을 줄이면 더 빠르게 검사됩니다.")
     st.checkbox("맞춤법·문법",      key="check_spelling")
@@ -450,40 +442,43 @@ with st.sidebar:
 # ════════════════════════════════════════════════════════════
 # 메인 헤더
 # ════════════════════════════════════════════════════════════
-col_title, col_reset = st.columns([5,1])
-with col_title:
+col_left, col_right = st.columns([3, 2])
+
+with col_left:
     logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
-    c1,c2 = st.columns([1,6])
+    c1, c2 = st.columns([1, 5])
     with c1:
-        if os.path.exists(logo_path): st.image(logo_path, width=75)
+        if os.path.exists(logo_path): st.image(logo_path, width=70)
     with c2:
-        book_label = st.session_state.book_title or "제목 미설정"
-        st.markdown(f"""
+        st.markdown("""
 <div style='padding-top:6px'>
   <span style='font-family:Playfair Display,Noto Serif KR,serif;
-               font-size:2rem;font-weight:700;color:#0f3460'>작가의 책상</span>
-  <span style='font-size:1rem;color:#6b7a99;margin-left:8px'>/ Writer's Desk</span><br>
-  <span style='color:#6b7a99;font-size:0.83rem'>당신의 원고를 완성시켜 드립니다</span>
-  &nbsp;
-  <span style='background:#e0eaff;color:#0f3460;padding:2px 10px;
-               border-radius:12px;font-size:0.75rem;font-weight:600'>
-    프로젝트: {book_label}
-  </span>
+               font-size:1.9rem;font-weight:700;color:#0f3460'>작가의 책상</span>
+  <span style='font-size:0.95rem;color:#6b7a99;margin-left:8px'>/ Writer's Desk</span><br>
+  <span style='color:#6b7a99;font-size:0.8rem'>당신의 원고를 완성시켜 드립니다</span>
 </div>""", unsafe_allow_html=True)
 
-with col_reset:
-    st.markdown("<br>", unsafe_allow_html=True)
+with col_right:
+    book_label = st.session_state.book_title or "제목 미설정"
+    # 프로젝트명 배지
+    st.markdown(f"""
+<div style='text-align:right;padding-top:6px'>
+  <span style='background:#e0eaff;color:#0f3460;padding:4px 12px;
+               border-radius:12px;font-size:0.8rem;font-weight:600'>
+    📖 프로젝트: {book_label}
+  </span>
+</div>""", unsafe_allow_html=True)
+    # 챕터명 입력 (우측 상단)
+    chapter_name = st.text_input("챕터명 (파일명용)",
+        placeholder="예: 제1화, chapter_01",
+        key="chapter_name",
+        help="저장 파일명에 사용됩니다. 예: 제1화 → '제1화_20250603.txt'로 저장")
+    # 새로 시작 버튼
     if st.button("🔄 새로 시작", use_container_width=True):
         st.session_state['_pending_reset'] = True
         st.rerun()
 
 st.divider()
-
-# 챕터명
-chapter_name = st.text_input("챕터명 (파일명용)",
-    placeholder="예: 제1화, chapter_01",
-    key="chapter_name",
-    help="저장 파일명에 사용됩니다")
 
 # ════════════════════════════════════════════════════════════
 # STEP 1: 원고 입력 & 품질 검사
