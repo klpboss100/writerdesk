@@ -1,8 +1,6 @@
 """
-작가의 책상 / Writer's Desk v2.1
-- 사이드바 입력창 글자 가시성 수정
-- 라이트/다크 모드 호환
-- 툴팁(마우스오버 설명) 추가
+작가의 책상 / Writer's Desk v3.0
+TTS 앱 UI 구조 + 교정 앱 기능 통합
 """
 import streamlit as st
 import os, json, re
@@ -15,257 +13,266 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+# ── 리셋 플래그 처리 (위젯 생성 전) ──
+if st.session_state.pop('_pending_reset', False):
+    for k in ['manuscript','issues','ai_summary','analysis_result',
+              'active_filter','custom_edits','chosen','manuscript_checked',
+              'chapter_name']:
+        st.session_state.pop(k, None)
+
+# ════════════════════════════════════════════════════════════
+# CSS
+# ════════════════════════════════════════════════════════════
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;600;700&family=Noto+Sans+KR:wght@300;400;500;700&family=Playfair+Display:wght@700&display=swap');
 
-/* ── 라이트/다크 공용 변수 ── */
-:root {
-    --navy: #0f3460;
-    --navy-mid: #1a4a8a;
-    --accent: #c8d7f0;
-    --border: #dde3f0;
-    --muted: #6b7a99;
-}
+h1 a, h2 a, h3 a { display:none !important; }
+[data-testid="stHeaderActionElements"] { display:none !important; }
 
-/* ── 전체 폰트 ── */
-.stApp { font-family: 'Noto Sans KR', sans-serif; }
-
-/* ── 사이드바: 배경만 네이비, 글자는 항상 흰색 ── */
-[data-testid="stSidebar"] {
-    background: var(--navy) !important;
-}
-/* 사이드바 모든 텍스트 흰색 */
-[data-testid="stSidebar"] p,
-[data-testid="stSidebar"] span,
-[data-testid="stSidebar"] label,
-[data-testid="stSidebar"] div {
-    color: #e8edf8 !important;
-}
-/* 사이드바 입력창: 흰 배경 + 검은 글자 (가독성 확보) */
-[data-testid="stSidebar"] input,
-[data-testid="stSidebar"] textarea,
-[data-testid="stSidebar"] select,
-[data-testid="stSidebar"] [data-baseweb="select"] {
-    background: #ffffff !important;
-    color: #1e2540 !important;
-    border: 1px solid rgba(255,255,255,0.4) !important;
+/* 사이드바 - 시스템 테마 따름 (강제 색상 제거) */
+[data-testid="stSidebar"] input[type="text"],
+[data-testid="stSidebar"] input[type="password"] {
+    border: 1.5px solid #0f3460 !important;
     border-radius: 6px !important;
 }
-[data-testid="stSidebar"] [data-baseweb="select"] * {
-    color: #1e2540 !important;
+[data-testid="stSidebar"] input:focus {
+    border: 2px solid #1a4a8a !important;
+    box-shadow: 0 0 0 3px rgba(15,52,96,0.15) !important;
 }
-[data-testid="stSidebar"] .stExpander {
-    border: 1px solid rgba(255,255,255,0.2) !important;
-    border-radius: 8px !important;
-    margin-bottom: 8px !important;
-}
-
-/* ── 메인 버튼 ── */
-.stButton > button {
-    background: var(--navy) !important;
-    color: #fff !important;
-    border: none !important;
-    border-radius: 8px !important;
-    font-family: 'Noto Sans KR', sans-serif !important;
-    font-weight: 500 !important;
-    transition: all 0.2s !important;
-}
-.stButton > button:hover {
-    background: var(--navy-mid) !important;
-    transform: translateY(-1px);
-    box-shadow: 0 4px 12px rgba(15,52,96,0.3) !important;
+[data-testid="stSidebar"] [data-baseweb="select"] > div {
+    border: 1.5px solid #0f3460 !important;
+    border-radius: 6px !important;
 }
 
-/* ── 메인 텍스트에어리어 ── */
-.stTextArea textarea {
-    font-family: 'Noto Serif KR', serif !important;
-    font-size: 0.95rem !important;
-    line-height: 1.9 !important;
-    border-radius: 8px !important;
+/* 사이드바 섹션 카드 */
+.sb-header {
+    border-radius: 8px 8px 0 0;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 800;
+    color: white;
+    letter-spacing: -0.2px;
+    cursor: help;
+}
+.sb-body {
+    border-radius: 0 0 8px 8px;
+    padding: 10px 10px 6px;
+    margin-bottom: 8px;
+    border-top: none;
+}
+.h-must  { background: linear-gradient(90deg,#0f3460,#1a4a8a); }
+.h-title { background: linear-gradient(90deg,#0369a1,#0ea5e9); }
+.h-novel { background: linear-gradient(90deg,#065f46,#10b981); }
+.h-char  { background: linear-gradient(90deg,#6d28d9,#8b5cf6); }
+.h-term  { background: linear-gradient(90deg,#92400e,#f59e0b); }
+.h-check { background: linear-gradient(90deg,#1e1b4b,#4338ca); }
+.b-must  { border: 2px solid #0f3460; }
+.b-title { border: 2px solid #0369a1; }
+.b-novel { border: 2px solid #065f46; }
+.b-char  { border: 2px solid #6d28d9; }
+.b-term  { border: 2px solid #92400e; }
+.b-check { border: 2px solid #1e1b4b; }
+
+/* 스텝 헤더 */
+.step-box {
+    background: #f0f5ff;
+    border: 2px solid #0f3460;
+    border-left: 6px solid #0f3460;
+    border-radius: 8px;
+    padding: 10px 16px;
+    margin: 20px 0 10px 0;
+    font-family: 'Noto Sans KR', sans-serif;
 }
 
-/* ── 통계 카드 ── */
-.stat-row { display:flex; gap:12px; margin-bottom:16px; flex-wrap:wrap; }
+/* 온보딩 박스 */
+.onboard-box {
+    background: linear-gradient(135deg,#f0f5ff,#e8f4fd);
+    border: 2px solid #0f3460;
+    border-radius: 12px;
+    padding: 20px 24px;
+    margin-bottom: 16px;
+}
+
+/* 통계 */
+.stat-row { display:flex; gap:12px; margin-bottom:12px; flex-wrap:wrap; }
 .stat-item {
-    border: 1px solid var(--border);
-    border-radius: 10px; padding:12px 18px;
-    text-align:center; flex:1; min-width:80px;
+    border: 1px solid #dde3f0; border-radius:10px;
+    padding:10px 16px; text-align:center; flex:1; min-width:70px;
 }
 .stat-num {
     font-family:'Playfair Display',serif;
-    font-size:1.5rem; font-weight:700; color:var(--navy);
+    font-size:1.4rem; font-weight:700; color:#0f3460;
 }
-.stat-label { font-size:0.72rem; color:var(--muted); margin-top:2px; }
+.stat-label { font-size:0.72rem; color:#6b7a99; margin-top:2px; }
 
-/* ── 품질 배지 ── */
-.quality-counts { display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px; }
+/* 품질 배지 */
 .qc-badge {
-    padding:6px 16px; border-radius:20px;
-    font-size:0.85rem; font-weight:600;
-    border: 2px solid transparent;
+    padding:5px 14px; border-radius:20px;
+    font-size:0.83rem; font-weight:600; display:inline-block;
 }
 .qc-total   { background:#f1f5f9; color:#334155; }
 .qc-awkward { background:#fef3c7; color:#92400e; }
 .qc-ai      { background:#fee2e2; color:#991b1b; }
 .qc-spell   { background:#ffedd5; color:#9a3412; }
 
-/* ── AI 총평 박스 ── */
+/* AI 총평 */
 .ai-summary-box {
     background: linear-gradient(135deg,#eff6ff,#f0fdf4);
-    border:1px solid #bfdbfe; border-radius:10px;
+    border: 1px solid #bfdbfe; border-radius:10px;
     padding:14px 18px; margin:12px 0;
     font-size:0.88rem; line-height:1.7;
 }
 
-/* ── 결과 박스 ── */
+/* 결과 박스 */
 .result-box {
-    border-left:4px solid var(--navy);
-    border-radius:0 8px 8px 0;
-    padding:16px 20px;
-    font-family:'Noto Serif KR',serif;
-    font-size:0.95rem; line-height:1.9;
-    white-space:pre-wrap;
+    border-left: 4px solid #0f3460;
+    border-radius: 0 8px 8px 0;
+    padding: 16px 20px;
+    font-family: 'Noto Serif KR',serif;
+    font-size: 0.95rem; line-height:1.9;
+    white-space: pre-wrap;
     background: #f0f5ff;
-    color: #1e2540;
 }
 
-/* ── 툴팁 ── */
-.tooltip-wrap { position:relative; display:inline-block; }
-.tooltip-wrap .tooltip-text {
+/* 버튼 */
+.stButton > button {
+    background: #0f3460 !important; color:#fff !important;
+    border:none !important; border-radius:8px !important;
+    font-family:'Noto Sans KR',sans-serif !important;
+    font-weight:500 !important; transition:all 0.2s !important;
+}
+.stButton > button:hover {
+    background:#1a4a8a !important;
+    transform:translateY(-1px);
+    box-shadow:0 4px 12px rgba(15,52,96,0.3) !important;
+}
+
+/* 툴팁 */
+.tt { position:relative; display:inline-block; }
+.tt .tt-text {
     visibility:hidden; opacity:0;
     background:#1e2540; color:#fff;
-    font-size:0.78rem; line-height:1.5;
+    font-size:0.77rem; line-height:1.5;
     border-radius:6px; padding:8px 12px;
     position:absolute; z-index:999;
-    left:0; top:110%;
-    width:220px;
-    transition: opacity 0.2s;
+    left:0; top:110%; width:230px;
+    transition:opacity 0.2s;
     pointer-events:none;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    box-shadow:0 4px 12px rgba(0,0,0,0.2);
+    white-space:normal;
 }
-.tooltip-wrap:hover .tooltip-text {
-    visibility:visible; opacity:1;
-}
-
-/* ── 캐릭터 카드 ── */
-.char-card {
-    border:1px solid var(--border); border-radius:10px;
-    padding:14px 18px; margin-bottom:10px;
-    display:flex; align-items:flex-start; gap:14px;
-}
-.char-avatar {
-    width:44px; height:44px; background:var(--navy);
-    border-radius:50%; display:flex; align-items:center;
-    justify-content:center; color:#fff; font-size:1.2rem; flex-shrink:0;
-}
-
-/* ── 사용 가이드 스텝 ── */
-.guide-step {
-    border:1px solid var(--border); border-radius:10px;
-    padding:16px 20px; margin-bottom:12px;
-    display:flex; gap:16px; align-items:flex-start;
-}
-.guide-step-num {
-    width:36px; height:36px; background:var(--navy); color:#fff;
-    border-radius:50%; display:flex; align-items:center;
-    justify-content:center; font-weight:700; font-size:1rem; flex-shrink:0;
-}
+.tt:hover .tt-text { visibility:visible; opacity:1; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── 툴팁 헬퍼 ──────────────────────────────────────────────
-def tooltip(label: str, tip: str) -> str:
-    """마우스 오버시 설명이 나오는 라벨 HTML 반환"""
-    return f"""
-<div class="tooltip-wrap">
-  <span style="font-weight:600;cursor:help;border-bottom:1px dashed #6b7a99;">{label} ❓</span>
-  <div class="tooltip-text">{tip}</div>
-</div>"""
+# ════════════════════════════════════════════════════════════
+# 헬퍼
+# ════════════════════════════════════════════════════════════
+def sb_card(header_class, body_class, title, tooltip_text=""):
+    tip = f" <span style='font-size:11px;opacity:0.8;cursor:help' title='{tooltip_text}'>❓</span>" if tooltip_text else ""
+    st.markdown(
+        f"<div class='sb-header {header_class}'>{title}{tip}</div>"
+        f"<div class='sb-body {body_class}'>",
+        unsafe_allow_html=True)
 
-# ── 세션 초기화 ────────────────────────────────────────────
+def sb_card_end():
+    st.markdown("</div>", unsafe_allow_html=True)
+
+def step_header(num, title, subtitle=""):
+    sub = f"<small style='color:#6b7a99'> — {subtitle}</small>" if subtitle else ""
+    st.markdown(f"<div class='step-box'><b style='color:#0f3460'>{num}. {title}</b>{sub}</div>",
+                unsafe_allow_html=True)
+
+def tt(label, tip):
+    return f"<span class='tt'>{label} <span style='font-size:11px;color:#6b7a99;cursor:help'>❓</span><span class='tt-text'>{tip}</span></span>"
+
+# ════════════════════════════════════════════════════════════
+# 세션 초기화
+# ════════════════════════════════════════════════════════════
 def init_state():
     defaults = {
         "api_key":"", "api_provider":"Claude (Anthropic)", "model_name":"",
-        "book_title":"", "book_genre":"현대소설", "book_era":"현대",
+        "book_title":"", "book_genre":"현대소설", "book_era":"현대", "book_style":"표준 현대어",
         "characters":[], "allowed_terms":[], "banned_terms":[],
-        "check_spelling":True, "check_consistency":True,
-        "check_style":True, "check_pacing":True, "check_dialogue":True,
-        "manuscript":"", "issues":[], "ai_summary":"",
-        "analysis_result":"", "history":[],
-        "active_filter":"전체", "custom_edits":{}, "chosen":{},
+        "check_spelling":True,"check_consistency":True,
+        "check_style":True,"check_pacing":True,"check_dialogue":True,
+        "manuscript":"","issues":[],"ai_summary":"",
+        "analysis_result":"","history":[],
+        "active_filter":"전체","custom_edits":{},"chosen":{},
+        "manuscript_checked":"",
     }
     for k,v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
 init_state()
 
-# ── API 헬퍼 ───────────────────────────────────────────────
-def get_ai_response(prompt:str, system:str="") -> str:
+# ════════════════════════════════════════════════════════════
+# API
+# ════════════════════════════════════════════════════════════
+def get_ai_response(prompt, system=""):
     key = st.session_state.api_key.strip()
-    provider = st.session_state.api_provider
-    if not key:
-        return "❌ API 키를 사이드바에서 먼저 입력해주세요."
+    if not key: return "❌ API 키를 사이드바에서 먼저 입력해주세요."
     try:
-        if "Claude" in provider:
+        if "Claude" in st.session_state.api_provider:
             import anthropic
             client = anthropic.Anthropic(api_key=key)
             model = st.session_state.model_name or "claude-sonnet-4-20250514"
-            kwargs = {"model":model,"max_tokens":4096,
-                      "messages":[{"role":"user","content":prompt}]}
-            if system: kwargs["system"] = system
-            return client.messages.create(**kwargs).content[0].text
-        elif "Gemini" in provider:
+            kw = {"model":model,"max_tokens":4096,
+                  "messages":[{"role":"user","content":prompt}]}
+            if system: kw["system"] = system
+            return client.messages.create(**kw).content[0].text
+        else:
             import google.generativeai as genai
             genai.configure(api_key=key)
-            model = genai.GenerativeModel(
+            m = genai.GenerativeModel(
                 st.session_state.model_name or "gemini-1.5-pro",
                 system_instruction=system or None)
-            return model.generate_content(prompt).text
+            return m.generate_content(prompt).text
     except Exception as e:
         return f"❌ API 오류: {str(e)}"
 
-def build_system_prompt() -> str:
+def build_system():
     s = st.session_state
-    parts = ["당신은 전문 소설 원고 교정·편집 AI입니다.",
-             "한국어 소설 원고를 교정하고 작가의 스타일을 존중하며 수정안을 제안합니다."]
-    if s.book_title: parts.append(f"작품명: {s.book_title}")
-    if s.book_genre: parts.append(f"장르: {s.book_genre}")
-    if s.book_era:   parts.append(f"시대적 배경: {s.book_era}")
+    p = ["당신은 전문 소설 원고 교정·편집 AI입니다.",
+         "한국어 소설 원고를 교정하고 작가의 스타일을 존중하며 수정안을 제안합니다."]
+    if s.book_title: p.append(f"작품명: {s.book_title}")
+    if s.book_genre: p.append(f"장르: {s.book_genre}")
+    if s.book_era:   p.append(f"시대적 배경: {s.book_era}")
+    if s.book_style: p.append(f"문체 스타일: {s.book_style}")
     if s.characters:
-        parts.append("등장인물:\n" + "\n".join(
+        p.append("등장인물:\n" + "\n".join(
             f"  - {c['name']} ({c['role']})" + (f": {c['speech']}" if c.get('speech') else '')
             for c in s.characters))
-    if s.allowed_terms: parts.append(f"허용 용어: {', '.join(s.allowed_terms)}")
-    if s.banned_terms:  parts.append(f"금지 용어: {', '.join(s.banned_terms)}")
-    return "\n".join(parts)
+    if s.allowed_terms: p.append(f"허용 용어(원문 유지): {', '.join(s.allowed_terms)}")
+    if s.banned_terms:  p.append(f"금지 용어(사용 불가): {', '.join(s.banned_terms)}")
+    return "\n".join(p)
 
-def run_quality_check(manuscript:str):
-    system = build_system_prompt()
+def run_quality_check(manuscript):
     prompt = f"""다음 소설 원고를 검토하여 문제 문장들을 JSON 형식으로 반환해주세요.
+
+소설 배경: 시대={st.session_state.book_era}, 문체={st.session_state.book_style}
+※ 시대에 맞는 표현(예: 1970년대면 '국민학교')은 오류로 처리하지 마세요.
 
 [원고]
 {manuscript}
 
-반드시 아래 JSON 형식만 출력하세요 (설명 없이):
+반드시 아래 JSON 형식만 출력 (마크다운 없이):
 {{
-  "summary": "전체 원고에 대한 2~3문장 총평",
+  "summary": "전체 원고 2~3문장 총평",
   "issues": [
     {{
       "type": "어색함",
-      "original": "문제가 되는 원문 문장",
-      "suggested": "개선된 수정 제안 문장",
-      "reason": "왜 어색한지 한 줄 설명"
+      "original": "원고에서 정확히 찾을 수 있는 텍스트",
+      "suggested": "수정 제안",
+      "reason": "이유 한 줄"
     }}
   ]
 }}
+type은 "어색함", "AI패턴", "맞춤법" 중 하나. 최대 15개."""
 
-type은 반드시 "어색함", "AI패턴", "맞춤법" 중 하나만 사용하세요.
-issues는 실제 문제만, 최대 15개까지."""
-
-    raw = get_ai_response(prompt, system)
-    if raw.startswith("❌"):
-        return [], raw
+    raw = get_ai_response(prompt, build_system())
+    if raw.startswith("❌"): return [], raw
     try:
         cleaned = re.sub(r"```json|```","",raw).strip()
         data = json.loads(cleaned)
@@ -280,355 +287,463 @@ with st.sidebar:
     logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
     if os.path.exists(logo_path):
         st.image(logo_path, use_container_width=True)
-    else:
-        st.markdown("### 📝 작가의 책상")
 
-    st.markdown("""<hr style="border:none;border-top:1px solid rgba(255,255,255,0.2);margin:10px 0">""",
-                unsafe_allow_html=True)
+    # 필수설정 헤더
     st.markdown("""
-    <div style="background:rgba(255,255,255,0.15);border-radius:8px;padding:10px 14px;
-         text-align:center;margin-bottom:12px;">
-      <div style="font-weight:700;font-size:0.95rem;color:#fff;">⚙️ 필수 설정</div>
-      <div style="font-size:0.75rem;color:#c8d7f0;margin-top:4px;">아래 설정 후 교정을 시작하세요</div>
+    <div style='background:linear-gradient(135deg,#0f3460,#1a4a8a);
+                border-radius:8px;padding:10px 12px;margin:8px 0;text-align:center'>
+      <div style='color:white;font-size:15px;font-weight:800'>⚙️ 필수 설정</div>
+      <div style='color:#c8d7f0;font-size:11px;margin-top:3px'>아래 설정 후 교정을 시작하세요</div>
     </div>""", unsafe_allow_html=True)
 
-    with st.expander("🔑 API설정 · 모델 선택", expanded=True):
-        st.markdown(tooltip("AI 제공사",
-            "Claude(Anthropic) 또는 Gemini(Google) 중 선택하세요.<br>"
-            "API 키는 각 서비스 콘솔에서 발급받을 수 있습니다."),
-            unsafe_allow_html=True)
-        provider = st.selectbox("AI 제공사",
-            ["Claude (Anthropic)","Gemini (Google)"],
-            key="api_provider", label_visibility="collapsed")
+    # ① API 설정
+    sb_card("h-must","b-must","🔑 API설정 · 모델 선택",
+            "Claude(Anthropic) 또는 Gemini(Google) API 키 입력")
+    provider = st.selectbox("AI 제공사",["Claude (Anthropic)","Gemini (Google)"],
+                            key="api_provider", label_visibility="collapsed")
+    key_input = st.text_input("API Key", type="password",
+                              value=st.session_state.api_key,
+                              placeholder="sk-ant-... 또는 AIza...",
+                              label_visibility="collapsed",
+                              help="Claude: console.anthropic.com\nGemini: aistudio.google.com\n에서 무료 발급")
+    if key_input != st.session_state.api_key:
+        st.session_state.api_key = key_input
 
-        st.markdown(tooltip("API Key",
-            "Claude: console.anthropic.com<br>"
-            "Gemini: aistudio.google.com<br>에서 무료로 발급 가능합니다."),
-            unsafe_allow_html=True)
-        key_input = st.text_input("API Key", type="password",
-            value=st.session_state.api_key,
-            placeholder="sk-ant-... 또는 AIza...",
-            label_visibility="collapsed")
-        if key_input != st.session_state.api_key:
-            st.session_state.api_key = key_input
+    if "Claude" in provider:
+        models = ["claude-sonnet-4-20250514","claude-opus-4-20250514","claude-haiku-4-5-20251001"]
+    else:
+        models = ["gemini-2.5-pro","gemini-1.5-pro","gemini-1.5-flash"]
+    st.session_state.model_name = st.selectbox("모델", models,
+        label_visibility="collapsed",
+        help="상단 모델일수록 성능↑ 비용↑\n교정은 Sonnet/Flash로도 충분합니다")
+    if st.session_state.api_key:
+        st.success("✅ API 키 입력됨")
+    sb_card_end()
 
-        if "Claude" in provider:
-            model_options = ["claude-sonnet-4-20250514",
-                             "claude-opus-4-20250514","claude-haiku-4-5-20251001"]
-        else:
-            model_options = ["gemini-2.5-pro","gemini-1.5-pro","gemini-1.5-flash"]
+    # ② 책 제목
+    sb_card("h-title","b-title","📘 책 제목",
+            "AI가 작품 분위기와 맥락을 파악하는 데 사용됩니다")
+    st.text_input("작품 제목", key="book_title",
+                  placeholder="예: 붉은 달의 기억",
+                  label_visibility="collapsed")
+    sb_card_end()
 
-        st.markdown(tooltip("모델 선택",
-            "상단 모델일수록 성능이 높지만 비용도 높습니다.<br>"
-            "일반 교정은 Sonnet / Flash로도 충분합니다."),
-            unsafe_allow_html=True)
-        st.session_state.model_name = st.selectbox("모델", model_options,
-                                                    label_visibility="collapsed")
-        if st.session_state.api_key:
-            st.success("✅ API 키 입력됨")
+    # ③ 소설 설정
+    sb_card("h-novel","b-novel","📖 소설 설정",
+            "시대배경+문체 설정 시 AI가 해당 시대 언어·문화에 맞게 교정합니다\n예: 1978년 서울, 조선시대")
+    st.text_input("시대 배경", key="book_era",
+                  placeholder="예: 1978년 제주도, 조선 후기",
+                  label_visibility="visible",
+                  help="구체적일수록 교정 정확도↑\n예: 1970년대면 '국민학교' 허용")
+    st.selectbox("장르", ["현대소설","역사소설","판타지","SF","로맨스",
+                          "스릴러/미스터리","호러","무협","라이트노벨","기타"],
+                 key="book_genre")
+    st.selectbox("문체 스타일", ["표준 현대어","고어/사극체","방언 포함","대화체","구어체"],
+                 key="book_style",
+                 help="고어/사극체: 하오체 허용\n방언 포함: 사투리 허용\n구어체: 자연스러운 말투 우선")
+    sb_card_end()
 
-    with st.expander("📘 책 제목"):
-        st.markdown(tooltip("작품 제목","AI가 작품의 분위기와 맥락을 파악하는 데 사용됩니다."),
-                    unsafe_allow_html=True)
-        st.text_input("작품 제목", key="book_title",
-                      placeholder="예: 붉은 달의 기억",
-                      label_visibility="collapsed")
+    # ④ 등장인물
+    sb_card("h-char","b-char","👤 등장인물",
+            "인물의 말투를 등록하면 AI가 대사 일관성을 검사합니다\n예: 홍길동 / 주인공 / 반말+사투리")
+    chars = st.session_state.characters
+    with st.form("add_char", clear_on_submit=True):
+        c1,c2 = st.columns(2)
+        with c1: c_name  = st.text_input("이름", placeholder="홍길동")
+        with c2: c_role  = st.text_input("역할", placeholder="주인공")
+        c_speech = st.text_input("말투", placeholder="반말, 사투리 등")
+        if st.form_submit_button("➕ 추가", use_container_width=True):
+            if c_name:
+                chars.append({"name":c_name,"role":c_role,"speech":c_speech})
+                st.session_state.characters = chars
+                st.rerun()
+    for i, ch in enumerate(chars):
+        col1,col2 = st.columns([5,1])
+        with col1: st.caption(f"**{ch['name']}** {ch['role']}")
+        with col2:
+            if st.button("✕", key=f"dc{i}"):
+                chars.pop(i); st.session_state.characters=chars; st.rerun()
+    sb_card_end()
 
-    with st.expander("📚 소설 설정"):
-        st.markdown(tooltip("시대 배경",
-            "시대와 장소를 입력하면 AI가 해당 시대의 언어·문화에 맞게 교정합니다.<br>"
-            "예: 1970년대 서울, 조선 후기, 2050년 미래 도시"),
-            unsafe_allow_html=True)
-        st.text_input("시대 배경", key="book_era",
-                      placeholder="예: 1978년 제주도",
-                      label_visibility="collapsed")
-        st.selectbox("장르", ["현대소설","역사소설","판타지","SF","로맨스",
-                              "스릴러/미스터리","호러","무협","라이트노벨","기타"],
-                     key="book_genre")
+    # ⑤ 용어 사전
+    sb_card("h-term","b-term","📖 용어 사전",
+            "허용 단어: 고유명사 등 AI가 오류로 잡지 말아야 할 단어\n금지 단어: 사용하면 안 되는 단어")
+    allowed_raw = st.text_area("허용 단어 (줄바꿈 구분)",
+        value="\n".join(st.session_state.allowed_terms), height=60,
+        placeholder="예:\n갈라하드\n마나스톤")
+    banned_raw = st.text_area("금지 단어 (줄바꿈 구분)",
+        value="\n".join(st.session_state.banned_terms), height=60,
+        placeholder="예:\n안습\n레알")
+    if st.button("💾 용어 저장", use_container_width=True):
+        st.session_state.allowed_terms=[w.strip() for w in allowed_raw.splitlines() if w.strip()]
+        st.session_state.banned_terms =[w.strip() for w in banned_raw.splitlines() if w.strip()]
+        st.success("저장됨")
+    sb_card_end()
 
-    with st.expander("👤 등장인물"):
-        st.markdown(tooltip("등장인물 등록",
-            "인물의 말투를 등록하면 AI가 대사 일관성을 검사합니다.<br>"
-            "예: 홍길동 / 주인공 / 반말+사투리"),
-            unsafe_allow_html=True)
-        chars = st.session_state.characters
-        with st.form("add_char_form", clear_on_submit=True):
-            c_name   = st.text_input("이름", placeholder="홍길동")
-            c_role   = st.text_input("역할", placeholder="주인공")
-            c_speech = st.text_input("말투", placeholder="반말, 사투리 등")
-            if st.form_submit_button("추가"):
-                if c_name:
-                    chars.append({"name":c_name,"role":c_role,"speech":c_speech})
-                    st.session_state.characters = chars
-                    st.rerun()
-        for i, ch in enumerate(chars):
-            col1, col2 = st.columns([5,1])
-            with col1: st.markdown(f"**{ch['name']}** — {ch['role']}")
-            with col2:
-                if st.button("✕", key=f"del_char_{i}"):
-                    chars.pop(i); st.session_state.characters=chars; st.rerun()
+    # ⑥ 검사 항목
+    sb_card("h-check","b-check","⚙️ 검사 항목",
+            "ON 항목만 AI가 검사합니다. 항목을 줄이면 더 빠르게 검사됩니다.")
+    st.checkbox("맞춤법·문법",      key="check_spelling")
+    st.checkbox("시제·인칭 일관성", key="check_consistency")
+    st.checkbox("문체·어조",        key="check_style")
+    st.checkbox("서사 템포",        key="check_pacing")
+    st.checkbox("대화체",           key="check_dialogue")
+    sb_card_end()
 
-    with st.expander("📖 용어 사전"):
-        st.markdown(tooltip("허용 단어",
-            "작품 고유 명사나 신조어처럼 AI가 오류로 잡지 말아야 할 단어를 입력하세요."),
-            unsafe_allow_html=True)
-        allowed_raw = st.text_area("허용 단어",
-            value="\n".join(st.session_state.allowed_terms),
-            height=70, placeholder="한 줄에 하나씩",
-            label_visibility="collapsed")
-        st.markdown(tooltip("금지 단어","원고에 사용하면 안 되는 단어 목록입니다."),
-                    unsafe_allow_html=True)
-        banned_raw = st.text_area("금지 단어",
-            value="\n".join(st.session_state.banned_terms),
-            height=70, placeholder="한 줄에 하나씩",
-            label_visibility="collapsed")
-        if st.button("용어 저장"):
-            st.session_state.allowed_terms = [w.strip() for w in allowed_raw.splitlines() if w.strip()]
-            st.session_state.banned_terms  = [w.strip() for w in banned_raw.splitlines() if w.strip()]
-            st.success("저장됨")
+    # ⑦ 사용 가이드 (접이식)
+    with st.expander("📖 사용 가이드", expanded=False):
+        st.markdown("""
+**🚀 빠른 시작**
+1. API Key 입력 (위 사이드바)
+2. 책 제목·소설 설정 입력
+3. 원고 붙여넣기
+4. 품질 검사 → 수정안 선택
+5. 최종 원고 다운로드
 
-    with st.expander("⚙️ 검사 항목"):
-        st.markdown(tooltip("검사 항목 선택",
-            "ON으로 설정된 항목만 AI가 검사합니다.<br>"
-            "항목을 줄이면 더 빠르게 검사됩니다."),
-            unsafe_allow_html=True)
-        st.checkbox("맞춤법·문법",      key="check_spelling")
-        st.checkbox("시제·인칭 일관성", key="check_consistency")
-        st.checkbox("문체·어조",        key="check_style")
-        st.checkbox("서사 템포",        key="check_pacing")
-        st.checkbox("대화체",           key="check_dialogue")
+---
+**🔑 API Key 발급**
+- Claude: console.anthropic.com
+- Gemini: aistudio.google.com
+
+---
+**📅 시대 배경 예시**
+- `1978년 서울` → 국민학교 허용
+- `조선시대` → 사극 표현 허용
+- `현대` → 표준 현대어 기준
+
+---
+**🟡🔴🟠 검사 유형**
+- 🟡 어색함: 자연스럽지 않은 표현
+- 🔴 AI패턴: AI 상투적 표현 감지
+- 🟠 맞춤법: 철자·문법·띄어쓰기
+
+---
+**💡 팁**
+- 5,000~8,000자 단위로 나누어 검사 권장
+- 등장인물 말투 등록 시 대사 일관성 검사 가능
+- 설정은 JSON으로 저장/불러오기 가능
+        """)
+
+    # 설정 저장/불러오기
+    st.markdown("---")
+    export = {k:st.session_state[k] for k in
+              ["book_title","book_genre","book_era","book_style",
+               "characters","allowed_terms","banned_terms"]}
+    st.download_button("📤 설정 저장",
+        data=json.dumps(export,ensure_ascii=False,indent=2),
+        file_name=f"writerdesk_{datetime.now().strftime('%Y%m%d')}.json",
+        mime="application/json", use_container_width=True)
+    uploaded = st.file_uploader("📥 설정 불러오기", type=["json"],
+                                 label_visibility="collapsed")
+    if uploaded:
+        try:
+            imp = json.load(uploaded)
+            for k,v in imp.items():
+                if k in st.session_state: st.session_state[k]=v
+            st.success("✅ 불러오기 완료"); st.rerun()
+        except Exception as e:
+            st.error(f"오류: {e}")
 
 # ════════════════════════════════════════════════════════════
-# 헤더
+# 메인 헤더
 # ════════════════════════════════════════════════════════════
-logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
-col_logo, col_title = st.columns([1,7])
-with col_logo:
-    if os.path.exists(logo_path):
-        st.image(logo_path, width=80)
+col_title, col_reset = st.columns([5,1])
 with col_title:
-    book_label = f"📖 {st.session_state.book_title}" if st.session_state.book_title else "제목 미설정"
-    st.markdown(f"""
-<div style="padding-top:8px">
-  <h1 style="font-family:'Playfair Display','Noto Serif KR',serif;color:#0f3460;
-             font-size:1.9rem;margin:0 0 4px 0;">
-    작가의 책상 <span style="font-size:1.1rem;color:#6b7a99;">/ Writer's Desk</span>
-  </h1>
-  <span style="color:#6b7a99;font-size:0.85rem;">당신의 원고를 완성시켜 드립니다</span>
-  &nbsp;&nbsp;
-  <span style="background:#e0eaff;color:#0f3460;padding:3px 12px;
-               border-radius:12px;font-size:0.78rem;font-weight:600;">
+    logo_path = os.path.join(os.path.dirname(__file__), "logo.png")
+    c1,c2 = st.columns([1,6])
+    with c1:
+        if os.path.exists(logo_path): st.image(logo_path, width=75)
+    with c2:
+        book_label = st.session_state.book_title or "제목 미설정"
+        st.markdown(f"""
+<div style='padding-top:6px'>
+  <span style='font-family:Playfair Display,Noto Serif KR,serif;
+               font-size:2rem;font-weight:700;color:#0f3460'>작가의 책상</span>
+  <span style='font-size:1rem;color:#6b7a99;margin-left:8px'>/ Writer's Desk</span><br>
+  <span style='color:#6b7a99;font-size:0.83rem'>당신의 원고를 완성시켜 드립니다</span>
+  &nbsp;
+  <span style='background:#e0eaff;color:#0f3460;padding:2px 10px;
+               border-radius:12px;font-size:0.75rem;font-weight:600'>
     프로젝트: {book_label}
   </span>
 </div>""", unsafe_allow_html=True)
 
-_, col_reset = st.columns([8,1])
 with col_reset:
-    if st.button("🔄 새로 시작"):
-        for k in ["manuscript","issues","ai_summary","analysis_result",
-                  "active_filter","custom_edits","chosen"]:
-            st.session_state[k] = [] if k=="issues" else ({} if k in ["custom_edits","chosen"] else "")
+    st.markdown("<br>", unsafe_allow_html=True)
+    if st.button("🔄 새로 시작", use_container_width=True):
+        st.session_state['_pending_reset'] = True
         st.rerun()
 
-st.markdown("---")
+st.divider()
+
+# 챕터명
+chapter_name = st.text_input("챕터명 (파일명용)",
+    placeholder="예: 제1화, chapter_01",
+    key="chapter_name",
+    help="저장 파일명에 사용됩니다")
 
 # ════════════════════════════════════════════════════════════
-# 메인 탭
+# STEP 1: 원고 입력 & 품질 검사
 # ════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
-    "📝 원고 편집", "🔍 심층 분석", "👤 캐릭터 관리", "⚙️ 책 설정", "📖 사용 가이드"
-])
+step_header("1", "원고 입력 & 품질 검사", "품질 검사 후 자동으로 2단계로 이동")
 
-# ── TAB 1: 원고 편집 ────────────────────────────────────────
-with tab1:
-    col_left, col_right = st.columns([1,1], gap="large")
+manuscript = st.text_area("원고 입력", height=280,
+    placeholder="여기에 교정할 원고를 붙여넣으세요...",
+    label_visibility="collapsed", key="manuscript")
 
-    with col_left:
-        st.markdown(tooltip("✏️ 원고 입력",
-            "교정할 원고를 붙여넣는 공간입니다.<br>"
-            "한 번에 5,000~8,000자 단위로 나누어 검사하면 더 정확합니다."),
-            unsafe_allow_html=True)
+char_count = len(manuscript) if manuscript else 0
+st.markdown(
+    f"<p style='font-size:15px;font-weight:600;color:#0f3460;margin:4px 0'>글자 수: {char_count:,}자</p>",
+    unsafe_allow_html=True)
 
-        chapter_name = st.text_input("챕터명 (파일명용)",
-            placeholder="예: 제1화", label_visibility="visible")
-
-        manuscript = st.text_area("원고", value=st.session_state.manuscript,
-            height=380, placeholder="여기에 교정할 원고를 붙여넣으세요...",
-            label_visibility="collapsed")
-        st.session_state.manuscript = manuscript
-
-        if manuscript.strip():
-            cc=len(manuscript); wc=len(manuscript.split()); lc=len(manuscript.splitlines())
-            st.markdown(f"""
-<div class="stat-row">
-  <div class="stat-item"><div class="stat-num">{cc:,}</div><div class="stat-label">글자 수</div></div>
-  <div class="stat-item"><div class="stat-num">{wc:,}</div><div class="stat-label">단어 수</div></div>
-  <div class="stat-item"><div class="stat-num">{lc:,}</div><div class="stat-label">줄 수</div></div>
+# API 키 없을 때 온보딩 안내
+if not st.session_state.api_key:
+    st.markdown("""
+<div class='onboard-box'>
+  <div style='font-size:17px;font-weight:800;color:#0f3460;margin-bottom:14px'>
+    👋 처음 오셨나요? 시작 방법을 안내해 드립니다
+  </div>
+  <table style='width:100%;border-collapse:collapse'>
+    <tr>
+      <td style='width:25%;padding:6px 8px;vertical-align:top'>
+        <div style='background:#0f3460;color:white;border-radius:50%;
+                    width:28px;height:28px;text-align:center;line-height:28px;
+                    font-weight:800;font-size:14px;display:inline-block'>1</div>
+        <div style='font-size:12px;font-weight:700;color:#0f3460;margin-top:4px'>API Key 입력</div>
+        <div style='font-size:11px;color:#666;margin-top:2px'>왼쪽 사이드바<br>🔑 필수 설정에서<br>API Key 입력</div>
+      </td>
+      <td style='width:25%;padding:6px 8px;vertical-align:top'>
+        <div style='background:#0f3460;color:white;border-radius:50%;
+                    width:28px;height:28px;text-align:center;line-height:28px;
+                    font-weight:800;font-size:14px;display:inline-block'>2</div>
+        <div style='font-size:12px;font-weight:700;color:#0f3460;margin-top:4px'>소설 설정</div>
+        <div style='font-size:11px;color:#666;margin-top:2px'>책 제목·시대배경<br>장르·문체<br>등장인물 입력</div>
+      </td>
+      <td style='width:25%;padding:6px 8px;vertical-align:top'>
+        <div style='background:#0f3460;color:white;border-radius:50%;
+                    width:28px;height:28px;text-align:center;line-height:28px;
+                    font-weight:800;font-size:14px;display:inline-block'>3</div>
+        <div style='font-size:12px;font-weight:700;color:#0f3460;margin-top:4px'>원고 입력</div>
+        <div style='font-size:11px;color:#666;margin-top:2px'>소설 원고를<br>아래 입력창에<br>붙여넣기</div>
+      </td>
+      <td style='width:25%;padding:6px 8px;vertical-align:top'>
+        <div style='background:#0f3460;color:white;border-radius:50%;
+                    width:28px;height:28px;text-align:center;line-height:28px;
+                    font-weight:800;font-size:14px;display:inline-block'>4</div>
+        <div style='font-size:12px;font-weight:700;color:#0f3460;margin-top:4px'>교정 완성</div>
+        <div style='font-size:11px;color:#666;margin-top:2px'>품질검사→<br>수정안 선택→<br>최종 원고 저장</div>
+      </td>
+    </tr>
+  </table>
+  <div style='margin-top:12px;padding-top:10px;border-top:1px solid #c8d7f0;
+              font-size:11px;color:#0f3460'>
+    🔑 Claude API Key:
+    <a href='https://console.anthropic.com' target='_blank' style='color:#0f3460;font-weight:700'>
+      console.anthropic.com
+    </a>
+    &nbsp;|&nbsp;
+    Gemini API Key:
+    <a href='https://aistudio.google.com/apikey' target='_blank' style='color:#0f3460;font-weight:700'>
+      aistudio.google.com/apikey
+    </a>
+  </div>
 </div>""", unsafe_allow_html=True)
 
-        c1, c2 = st.columns(2)
-        with c1: check_btn = st.button("🔍 품질 검사 시작", use_container_width=True)
-        with c2: skip_btn  = st.button("⏭️ 검사 건너뛰기",  use_container_width=True)
+col_q1, col_q2 = st.columns(2)
+with col_q1:
+    has_text = bool(manuscript and manuscript.strip())
+    check_btn = st.button(
+        "🔍 품질 검사 시작" if has_text else "✏️ 원고를 먼저 입력하세요",
+        disabled=not (st.session_state.api_key and has_text),
+        use_container_width=True, type="primary" if has_text else "secondary")
+with col_q2:
+    skip_btn = st.button("⏭️ 검사 건너뛰기",
+        disabled=not manuscript, use_container_width=True)
 
-    with col_right:
-        st.markdown(tooltip("📋 검사 결과",
-            "AI가 발견한 문제를 어색함🟡 / AI패턴🔴 / 맞춤법🟠 으로 분류해 표시합니다.<br>"
-            "각 항목에서 원본 / 제안 / 직접수정 중 하나를 선택하세요."),
-            unsafe_allow_html=True)
+if check_btn:
+    with st.status("🔍 원고 품질 분석 중...", expanded=True) as status:
+        st.write("AI가 문장을 분석하고 있습니다. (30초~1분 소요)")
+        try:
+            issues, summary = run_quality_check(manuscript)
+            st.session_state.issues = issues
+            st.session_state.ai_summary = summary
+            st.session_state.active_filter = "전체"
+            st.session_state.custom_edits = {}
+            st.session_state.chosen = {}
+            st.session_state.manuscript_checked = ""
+            st.session_state.history.append({
+                "time":datetime.now().strftime("%H:%M"),
+                "chapter":chapter_name or "미입력",
+                "chars":len(manuscript),"issues":len(issues)})
+            status.update(label=f"✅ 분석 완료 — {len(issues)}개 발견", state="complete")
+        except Exception as e:
+            status.update(label="❌ 오류 발생", state="error")
+            st.error(f"❌ {e}")
 
-        if check_btn:
-            if not manuscript.strip():
-                st.warning("원고를 먼저 입력해주세요.")
-            else:
-                with st.spinner("AI가 원고를 꼼꼼히 검토하고 있습니다..."):
-                    issues, summary = run_quality_check(manuscript)
-                    st.session_state.issues = issues
-                    st.session_state.ai_summary = summary
-                    st.session_state.active_filter = "전체"
-                    st.session_state.custom_edits = {}
-                    st.session_state.chosen = {}
-                    st.session_state.history.append({
-                        "time": datetime.now().strftime("%H:%M"),
-                        "chapter": chapter_name or "미입력",
-                        "chars": len(manuscript),
-                        "issues": len(issues)
-                    })
+if skip_btn:
+    st.session_state.manuscript_checked = manuscript
+    st.session_state.issues = []
+    st.session_state.ai_summary = ""
+    st.rerun()
 
-        issues  = st.session_state.issues
-        summary = st.session_state.ai_summary
+# 품질 검사 결과
+issues  = st.session_state.issues
+summary = st.session_state.ai_summary
 
-        if summary and not summary.startswith("❌"):
-            st.markdown(f'<div class="ai-summary-box">💬 {summary}</div>',
-                        unsafe_allow_html=True)
+if summary and not summary.startswith("❌"):
+    st.markdown(f'<div class="ai-summary-box">📊 {summary}</div>', unsafe_allow_html=True)
 
-        if issues:
-            total   = len(issues)
-            awkward = sum(1 for i in issues if i.get("type")=="어색함")
-            ai_p    = sum(1 for i in issues if i.get("type")=="AI패턴")
-            spell   = sum(1 for i in issues if i.get("type")=="맞춤법")
+if issues and not st.session_state.manuscript_checked:
+    types = [i.get("type","") for i in issues]
+    c1,c2,c3,c4 = st.columns(4)
+    c1.metric("전체", len(issues))
+    c2.metric("어색함 🟡", types.count("어색함"))
+    c3.metric("AI패턴 🔴", types.count("AI패턴"))
+    c4.metric("맞춤법 🟠", types.count("맞춤법"))
 
-            st.markdown(f"""
-<div class="quality-counts">
-  <span class="qc-badge qc-total">전체 ({total})</span>
-  <span class="qc-badge qc-awkward">어색함 🟡 ({awkward})</span>
-  <span class="qc-badge qc-ai">AI패턴 🔴 ({ai_p})</span>
-  <span class="qc-badge qc-spell">맞춤법 🟠 ({spell})</span>
-</div>""", unsafe_allow_html=True)
+    # 필터
+    flt = st.session_state.get("active_filter","전체")
+    f0,f1,f2,f3 = st.columns(4)
+    for col, label, key in [
+        (f0, f"전체 ({len(issues)})", "전체"),
+        (f1, f"어색함🟡 ({types.count('어색함')})", "어색함"),
+        (f2, f"AI패턴🔴 ({types.count('AI패턴')})", "AI패턴"),
+        (f3, f"맞춤법🟠 ({types.count('맞춤법')})", "맞춤법"),
+    ]:
+        if col.button(label, type="primary" if flt==key else "secondary",
+                      use_container_width=True, key=f"flt_{key}"):
+            st.session_state.active_filter = key; st.rerun()
 
-            filter_options = ["전체"]
-            if awkward: filter_options.append("어색함")
-            if ai_p:    filter_options.append("AI패턴")
-            if spell:   filter_options.append("맞춤법")
-            active_filter = st.radio("필터", filter_options, horizontal=True,
-                                     label_visibility="collapsed", key="active_filter")
+    # 일괄 적용
+    if flt != "전체":
+        if st.button(f"✅ '{flt}' 전체 → 제안으로 일괄 적용", use_container_width=True):
+            for j,iss in enumerate(issues):
+                if iss.get("type") == flt:
+                    st.session_state.chosen[j] = "suggested"
+            st.rerun()
 
-            ca, cb = st.columns(2)
-            with ca:
-                if st.button("✅ 제안 전체 일괄 적용", use_container_width=True):
-                    for idx in range(len(issues)):
-                        st.session_state.chosen[idx] = "suggested"
-                    st.success("모든 항목에 제안이 선택됐습니다.")
-            with cb:
-                if st.button("↩️ 원본으로 전체 되돌리기", use_container_width=True):
-                    st.session_state.chosen = {}
-                    st.success("모두 원본으로 되돌렸습니다.")
+    accepted = st.session_state.chosen
+    st.markdown("---")
 
-            filtered = [(idx, iss) for idx, iss in enumerate(issues)
-                        if active_filter=="전체" or iss.get("type")==active_filter]
+    filtered = [(j,iss) for j,iss in enumerate(issues)
+                if flt=="전체" or iss.get("type")==flt]
 
-            for idx, issue in filtered:
-                itype = issue.get("type","기타")
-                emoji = {"어색함":"🟡","AI패턴":"🔴","맞춤법":"🟠"}.get(itype,"⚪")
-                with st.expander(
-                    f"{emoji} [{itype}] {issue.get('original','')[:40]}"
-                    f"{'…' if len(issue.get('original',''))>40 else ''}", expanded=True):
+    for idx, issue in filtered:
+        itype = issue.get("type","")
+        orig  = issue.get("original","")
+        sugg  = issue.get("suggested","")
+        emoji = {"어색함":"🟡","AI패턴":"🔴","맞춤법":"🟠"}.get(itype,"⚪")
+        chosen = accepted.get(idx)
+        status_txt = {"original":"📌 원본","suggested":"✅ 제안","custom":"✏️ 직접"}.get(chosen,"⬜ 미선택")
 
-                    st.caption(f"💡 {issue.get('reason','')}")
-                    c1, c2, c3 = st.columns(3)
-                    with c1:
-                        st.markdown("**원본**")
-                        st.text_area("원본", value=issue.get("original",""),
-                            height=100, disabled=True,
-                            key=f"orig_{idx}", label_visibility="collapsed")
-                    with c2:
-                        st.markdown("**제안**")
-                        st.text_area("제안", value=issue.get("suggested",""),
-                            height=100, key=f"sugg_{idx}", label_visibility="collapsed")
-                    with c3:
-                        st.markdown("**직접 수정**")
-                        custom_val = st.session_state.custom_edits.get(idx,"")
-                        new_custom = st.text_area("직접수정", value=custom_val,
-                            height=100, placeholder="직접 입력...",
-                            key=f"custom_{idx}", label_visibility="collapsed")
-                        if new_custom != custom_val:
-                            st.session_state.custom_edits[idx] = new_custom
+        with st.expander(f"{emoji} [{itype}]  {orig[:45]}{'…' if len(orig)>45 else ''}  —  {status_txt}",
+                         expanded=True):
+            st.caption(f"💡 {issue.get('reason','')}")
+            co,cs,cc = st.columns(3)
 
-                    chosen = st.session_state.chosen.get(idx, None)
-                    b1, b2, b3 = st.columns(3)
-                    with b1:
-                        if st.button("✅ 원본" if chosen=="original" else "👆 원본 선택",
-                                     key=f"btn_orig_{idx}", use_container_width=True):
-                            st.session_state.chosen[idx]="original"; st.rerun()
-                    with b2:
-                        if st.button("✅ 제안" if chosen=="suggested" else "✨ 제안 선택",
-                                     key=f"btn_sugg_{idx}", use_container_width=True):
-                            st.session_state.chosen[idx]="suggested"; st.rerun()
-                    with b3:
-                        if st.button("✅ 직접수정" if chosen=="custom" else "✏️ 직접수정 선택",
-                                     key=f"btn_cust_{idx}", use_container_width=True):
-                            st.session_state.chosen[idx]="custom"; st.rerun()
+            with co:
+                is_sel = chosen=="original"
+                st.markdown(f"<div style='background:{'#ebf8ff' if is_sel else '#f8fafc'};"
+                            f"border:{'2px solid #2b6cb0' if is_sel else '1px solid #dde3f0'};"
+                            f"border-radius:8px;padding:7px 8px 3px;font-size:13px'>"
+                            f"<b>원본</b></div>", unsafe_allow_html=True)
+                st.text_area("원본", value=orig, height=80, disabled=True,
+                             key=f"orig_{idx}", label_visibility="collapsed")
+                if st.button("👆 원본 선택", key=f"bo_{idx}", use_container_width=True):
+                    st.session_state.chosen[idx]="original"; st.rerun()
 
-            st.markdown("---")
-            if st.button("📄 최종 원고 생성", use_container_width=True):
-                final = manuscript
-                for idx, issue in enumerate(issues):
-                    choice = st.session_state.chosen.get(idx,"original")
-                    orig = issue.get("original","")
-                    if choice=="suggested":
-                        repl = st.session_state.get(f"sugg_{idx}", issue.get("suggested",orig))
-                        final = final.replace(orig, repl, 1)
-                    elif choice=="custom":
-                        repl = st.session_state.custom_edits.get(idx, orig)
-                        if repl: final = final.replace(orig, repl, 1)
-                st.text_area("📄 최종 완성 원고", value=final, height=300)
-                st.download_button("💾 최종 원고 다운로드", data=final,
-                    file_name=f"{chapter_name or '원고'}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-                    mime="text/plain", use_container_width=True)
+            with cs:
+                is_sel = chosen=="suggested"
+                st.markdown(f"<div style='background:{'#f0fff4' if is_sel else '#f9fff9'};"
+                            f"border:{'2px solid #276749' if is_sel else '1px solid #9ae6b4'};"
+                            f"border-radius:8px;padding:7px 8px 3px;font-size:13px'>"
+                            f"<b>제안</b> <span style='font-size:11px;color:#888'>(수정 가능)</span></div>",
+                            unsafe_allow_html=True)
+                sugg_val = st.text_area("제안", value=sugg, height=80,
+                                         key=f"sugg_{idx}", label_visibility="collapsed")
+                if st.button("✅ 제안 선택", key=f"bs_{idx}", use_container_width=True):
+                    st.session_state.chosen[idx]="suggested"; st.rerun()
 
-        elif summary and summary.startswith("❌"):
-            st.error(summary)
-        elif not issues and not summary:
-            st.markdown("""
-<div style="text-align:center;padding:60px 20px;color:#9aabcc;">
-  <div style="font-size:3rem;margin-bottom:16px;">📄</div>
-  <p style="font-size:0.95rem;">원고를 입력하고<br><b>품질 검사 시작</b>을 누르세요.</p>
-</div>""", unsafe_allow_html=True)
+            with cc:
+                is_sel = chosen=="custom"
+                cust_val = st.session_state.custom_edits.get(idx,"")
+                st.markdown(f"<div style='background:{'#fffbeb' if is_sel else '#fff'};"
+                            f"border:{'2px solid #d97706' if is_sel else '1px solid #fde68a'};"
+                            f"border-radius:8px;padding:7px 8px 3px;font-size:13px'>"
+                            f"<b>직접 수정</b></div>", unsafe_allow_html=True)
+                new_cust = st.text_area("직접수정", value=cust_val, height=80,
+                    placeholder="직접 입력...", key=f"cust_{idx}", label_visibility="collapsed")
+                if new_cust != cust_val:
+                    st.session_state.custom_edits[idx] = new_cust
+                if st.button("✏️ 직접수정 선택", key=f"bc_{idx}", use_container_width=True):
+                    st.session_state.chosen[idx]="custom"; st.rerun()
 
-# ── TAB 2: 심층 분석 ────────────────────────────────────────
-with tab2:
-    st.markdown(tooltip("🔍 원고 심층 분석",
-        "단순 교정을 넘어 서사 구조, 감정선, 복선 등<br>소설의 완성도를 높이는 깊이 있는 분석을 제공합니다."),
+    st.markdown("---")
+    applied = len(accepted)
+    if st.button(f"✅ 검사 완료 → 다음 단계  ({applied}/{len(issues)}개 선택됨)",
+                 type="primary", use_container_width=True):
+        final = manuscript
+        for idx, issue in enumerate(issues):
+            ch = accepted.get(idx,"original")
+            orig = issue.get("original","")
+            if ch=="suggested":
+                repl = st.session_state.get(f"sugg_{idx}", issue.get("suggested",orig))
+                final = final.replace(orig, repl, 1)
+            elif ch=="custom":
+                repl = st.session_state.custom_edits.get(idx,"")
+                if repl: final = final.replace(orig, repl, 1)
+        st.session_state.manuscript_checked = final
+        st.rerun()
+
+elif summary and summary.startswith("❌"):
+    st.error(summary)
+
+# ════════════════════════════════════════════════════════════
+# STEP 2: 검사 완료 원고
+# ════════════════════════════════════════════════════════════
+if st.session_state.manuscript_checked:
+    step_header("2", "검사 완료 원고", "수정 내용이 반영된 최종 원고")
+
+    checked = st.session_state.manuscript_checked
+    st.text_area("완료 원고", value=checked, height=220,
+                 label_visibility="collapsed", key="checked_display")
+    st.markdown(
+        f"<p style='font-size:15px;font-weight:600;color:#0f3460;margin:4px 0'>글자 수: {len(checked):,}자</p>",
         unsafe_allow_html=True)
-    st.markdown("")
 
-    analysis_type = st.selectbox("분석 유형", [
-        "📊 서사 구조 분석 (기승전결)",
-        "💫 감정선·긴장감 분석",
-        "🎭 복선·상징 분석",
-        "⏱️ 서사 속도·템포 분석",
-        "🌍 세계관·배경 묘사 분석",
-        "📐 문장 다양성 분석",
-        "🔮 스토리 발전 방향 제안",
-    ])
+    c1,c2 = st.columns(2)
+    with c1:
+        st.download_button("💾 최종 원고 다운로드",
+            data=checked.encode("utf-8"),
+            file_name=f"{chapter_name or '원고'}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+            mime="text/plain", use_container_width=True)
+    with c2:
+        if st.button("🔬 심층 분석으로 이동", use_container_width=True):
+            st.session_state["go_analysis"] = True
+            st.rerun()
 
-    ms_for_analysis = st.text_area("분석할 원고",
-        value=st.session_state.manuscript, height=220,
-        placeholder="원고를 입력하거나 원고 편집 탭에서 먼저 입력해주세요.")
+# ════════════════════════════════════════════════════════════
+# STEP 3: 심층 분석 (선택사항)
+# ════════════════════════════════════════════════════════════
+if st.session_state.manuscript_checked:
+    with st.expander("🔍 STEP 3 · 심층 분석 (선택사항)", expanded=False):
+        st.caption("서사 구조, 감정선, 복선, 속도감 등 소설 완성도를 높이는 깊이 있는 분석")
 
-    if st.button("🔬 심층 분석 실행"):
-        if not ms_for_analysis.strip():
-            st.warning("원고를 입력해주세요.")
-        else:
+        analysis_type = st.selectbox("분석 유형", [
+            "📊 서사 구조 분석 (기승전결)",
+            "💫 감정선·긴장감 분석",
+            "🎭 복선·상징 분석",
+            "⏱️ 서사 속도·템포 분석",
+            "🌍 세계관·배경 묘사 분석",
+            "📐 문장 다양성 분석",
+            "🔮 스토리 발전 방향 제안",
+        ])
+
+        ms_anal = st.text_area("분석할 원고",
+            value=st.session_state.manuscript_checked, height=180,
+            label_visibility="collapsed")
+
+        if st.button("🔬 심층 분석 실행", use_container_width=False):
             analysis_map = {
                 "서사 구조":"이 원고의 서사 구조(기승전결/삼막 구조)를 분석해주세요. 각 구간의 역할과 균형, 개선점을 제시해주세요.",
                 "감정선":"원고에서 주인공의 감정선과 긴장감 흐름을 분석해주세요.",
@@ -641,178 +756,48 @@ with tab2:
             matched = next((k for k in analysis_map if k in analysis_type), None)
             with st.spinner("심층 분석 중..."):
                 result = get_ai_response(
-                    f"{analysis_map.get(matched,'원고를 종합 분석해주세요.')}\n\n[원고]\n{ms_for_analysis}",
-                    build_system_prompt())
+                    f"{analysis_map.get(matched,'원고를 종합 분석해주세요.')}\n\n[원고]\n{ms_anal}",
+                    build_system())
                 st.session_state.analysis_result = result
 
-    if st.session_state.analysis_result:
-        st.markdown("---")
-        st.markdown(f'<div class="result-box">{st.session_state.analysis_result}</div>',
-                    unsafe_allow_html=True)
-        st.download_button("💾 분석 결과 저장",
-            data=st.session_state.analysis_result,
-            file_name=f"심층분석_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
-            mime="text/plain")
+        if st.session_state.analysis_result:
+            st.markdown(f'<div class="result-box">{st.session_state.analysis_result}</div>',
+                        unsafe_allow_html=True)
+            st.download_button("💾 분석 결과 저장",
+                data=st.session_state.analysis_result,
+                file_name=f"심층분석_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
+                mime="text/plain")
 
-# ── TAB 3: 캐릭터 관리 ─────────────────────────────────────
-with tab3:
-    st.markdown(tooltip("👤 캐릭터 관리",
-        "등록된 캐릭터의 말투와 행동 일관성을 검사합니다.<br>"
-        "캐릭터는 사이드바 '등장인물' 섹션에서 추가하세요."),
-        unsafe_allow_html=True)
-    st.markdown("")
+# ════════════════════════════════════════════════════════════
+# STEP 4: 대사 일관성 검사 (선택사항)
+# ════════════════════════════════════════════════════════════
+if st.session_state.manuscript_checked and st.session_state.characters:
+    with st.expander("👤 STEP 4 · 대사 일관성 검사 (선택사항)", expanded=False):
+        st.caption("등록된 캐릭터의 말투와 행동 일관성을 AI가 검사합니다")
+        chars = st.session_state.characters
+        selected = st.selectbox("검사할 캐릭터", [c["name"] for c in chars])
+        ms_char = st.text_area("해당 캐릭터 등장 구간",
+            value=st.session_state.manuscript_checked, height=160,
+            label_visibility="collapsed")
+        if st.button("🗣️ 대사 일관성 검사"):
+            ci = next((c for c in chars if c["name"]==selected), {})
+            prompt = (f"'{selected}' 캐릭터의 대사와 행동을 분석해주세요.\n"
+                      f"캐릭터: 이름={ci.get('name','')}, 역할={ci.get('role','')}, 말투={ci.get('speech','')}\n"
+                      f"[원고]\n{ms_char}\n"
+                      f"1.말투 일관성 2.성격·행동 일치 3.어색한 대사 4.개선 제안")
+            with st.spinner(f"{selected} 분석 중..."):
+                result = get_ai_response(prompt, build_system())
+            st.markdown(f'<div class="result-box">{result}</div>', unsafe_allow_html=True)
 
-    chars = st.session_state.characters
-    if not chars:
-        st.info("사이드바의 '등장인물' 섹션에서 캐릭터를 먼저 추가해주세요.")
-    else:
-        avatars = ["🧑","👩","👨","🧓","👴","👵","🧙","⚔️","🔮","👑"]
-        for i, ch in enumerate(chars):
-            st.markdown(f"""
-<div class="char-card">
-  <div class="char-avatar">{avatars[i % len(avatars)]}</div>
-  <div>
-    <h4 style="color:#0f3460;margin:0 0 4px 0;font-family:'Noto Serif KR',serif;">{ch['name']}</h4>
-    <p style="color:#6b7a99;font-size:0.8rem;margin:0;">역할: {ch.get('role','—')} | 말투: {ch.get('speech','—')}</p>
-  </div>
-</div>""", unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.markdown("#### 🗣️ 대사 일관성 검사")
-        selected_char = st.selectbox("검사할 캐릭터", [c["name"] for c in chars])
-        ms_char = st.text_area("해당 캐릭터가 등장하는 원고 구간",
-                               value=st.session_state.manuscript, height=180)
-        if st.button("대사 일관성 검사"):
-            if not ms_char.strip():
-                st.warning("원고를 입력해주세요.")
-            else:
-                char_info = next((c for c in chars if c["name"]==selected_char), {})
-                prompt = (f"'{selected_char}' 캐릭터의 대사와 행동을 분석해주세요.\n"
-                          f"캐릭터 정보: 이름={char_info.get('name','')}, "
-                          f"역할={char_info.get('role','')}, 말투={char_info.get('speech','')}\n"
-                          f"[원고]\n{ms_char}\n"
-                          f"확인사항: 1.말투 일관성 2.성격과 행동 일치 3.어색한 대사 4.개선 제안")
-                with st.spinner(f"{selected_char} 분석 중..."):
-                    result = get_ai_response(prompt, build_system_prompt())
-                st.markdown(f'<div class="result-box">{result}</div>', unsafe_allow_html=True)
-
-# ── TAB 4: 책 설정 ──────────────────────────────────────────
-with tab4:
-    st.markdown("### ⚙️ 책 설정 요약")
-    col1, col2 = st.columns(2)
-    with col1:
-        info = {"작품명":st.session_state.book_title or "—",
-                "장르":st.session_state.book_genre,
-                "시대":st.session_state.book_era or "—",
-                "등장인물":f"{len(st.session_state.characters)}명",
-                "허용 용어":f"{len(st.session_state.allowed_terms)}개",
-                "금지 용어":f"{len(st.session_state.banned_terms)}개"}
-        rows = "".join(f'<div style="margin-bottom:8px"><b>{k}</b>: {v}</div>' for k,v in info.items())
-        st.markdown(f"""<div style="border:1px solid #dde3f0;border-radius:12px;padding:18px 22px;">
-<div style="font-weight:700;color:#0f3460;margin-bottom:12px;padding-bottom:8px;
-border-bottom:1px solid #c8d7f0;">📚 작품 정보</div>{rows}</div>""", unsafe_allow_html=True)
-
-    with col2:
-        checks = {"맞춤법·문법":st.session_state.check_spelling,
-                  "시제·인칭":st.session_state.check_consistency,
-                  "문체·어조":st.session_state.check_style,
-                  "서사 템포":st.session_state.check_pacing,
-                  "대화체":st.session_state.check_dialogue}
-        rows = "".join(
-            f'<div style="margin-bottom:8px"><b>{n}</b>: '
-            f'<span style="background:{"#dcfce7" if v else "#fee2e2"};'
-            f'color:{"#166534" if v else "#991b1b"};padding:2px 8px;'
-            f'border-radius:10px;font-size:0.75rem;">{"ON" if v else "OFF"}</span></div>'
-            for n,v in checks.items())
-        st.markdown(f"""<div style="border:1px solid #dde3f0;border-radius:12px;padding:18px 22px;">
-<div style="font-weight:700;color:#0f3460;margin-bottom:12px;padding-bottom:8px;
-border-bottom:1px solid #c8d7f0;">⚙️ 검사 설정</div>{rows}</div>""", unsafe_allow_html=True)
-
-    if st.session_state.history:
-        st.markdown("---")
-        st.markdown("#### 📜 교정 히스토리")
+# ════════════════════════════════════════════════════════════
+# 교정 히스토리 (하단)
+# ════════════════════════════════════════════════════════════
+if st.session_state.history:
+    with st.expander("📜 교정 히스토리", expanded=False):
         for h in reversed(st.session_state.history[-10:]):
             st.markdown(f"""
-<div style="border:1px solid #dde3f0;border-radius:8px;padding:10px 14px;
-margin-bottom:6px;font-size:0.85rem;">
+<div style='border:1px solid #dde3f0;border-radius:8px;padding:8px 14px;
+margin-bottom:6px;font-size:0.83rem'>
 ⏱️ <b>{h['time']}</b> | 챕터: {h.get('chapter','—')} |
 글자수: {h.get('chars',0):,} | 발견 문제: <b>{h.get('issues',0)}개</b>
 </div>""", unsafe_allow_html=True)
-
-    st.markdown("---")
-    export_data = {k: st.session_state[k] for k in
-                   ["book_title","book_genre","book_era","characters","allowed_terms","banned_terms"]}
-    st.download_button("📤 설정 JSON 내보내기",
-        data=json.dumps(export_data, ensure_ascii=False, indent=2),
-        file_name=f"writerdesk_설정_{datetime.now().strftime('%Y%m%d')}.json",
-        mime="application/json")
-    uploaded = st.file_uploader("📥 설정 JSON 가져오기", type=["json"])
-    if uploaded:
-        try:
-            imported = json.load(uploaded)
-            for k,v in imported.items():
-                if k in st.session_state: st.session_state[k]=v
-            st.success("✅ 설정을 불러왔습니다!"); st.rerun()
-        except Exception as e:
-            st.error(f"파일 읽기 오류: {e}")
-
-# ── TAB 5: 사용 가이드 ─────────────────────────────────────
-with tab5:
-    st.markdown("### 📖 사용 가이드")
-    st.markdown("**작가의 책상**을 처음 사용하시는 분을 위한 단계별 안내입니다.")
-    st.markdown("")
-
-    steps = [
-        ("🔑","API 키 입력",
-         "사이드바 상단 'API 설정'에서 Claude 또는 Gemini API 키를 입력하세요.<br>"
-         "모델은 자동으로 선택됩니다. Claude Sonnet 또는 Gemini 1.5 Pro를 권장합니다."),
-        ("📚","책 정보 설정",
-         "사이드바에서 책 제목, 시대 배경, 장르를 입력하세요.<br>"
-         "AI가 맥락을 파악하여 더 정확한 교정을 제공합니다."),
-        ("👤","등장인물 등록",
-         "주요 인물의 이름, 역할, 말투를 등록하면<br>"
-         "AI가 각 인물의 대사 일관성까지 검사해드립니다."),
-        ("✏️","원고 붙여넣기",
-         "'원고 편집' 탭에서 챕터명을 입력하고 원고를 붙여넣으세요.<br>"
-         "한 번에 너무 긴 원고(1만자 이상)는 나누어 검사하는 것을 권장합니다."),
-        ("🔍","품질 검사 실행",
-         "'품질 검사 시작' 버튼을 누르면 AI가 원고를 분석합니다.<br>"
-         "어색함 🟡 / AI패턴 🔴 / 맞춤법 🟠 세 가지로 문제를 분류합니다."),
-        ("✅","수정안 선택",
-         "각 문제 카드에서 원본 / 제안 / 직접수정 중 하나를 선택하세요.<br>"
-         "'제안 전체 일괄 적용' 버튼으로 한 번에 모든 제안을 반영할 수도 있습니다."),
-        ("📄","최종 원고 생성",
-         "'최종 원고 생성' 버튼을 누르면 수정이 반영된 완성 원고가 만들어집니다.<br>"
-         "텍스트 파일로 다운로드하거나 복사해서 사용하세요."),
-        ("🔬","심층 분석 활용",
-         "'심층 분석' 탭에서는 서사 구조, 감정선, 복선, 속도감 등<br>"
-         "더 깊이 있는 피드백을 받을 수 있습니다."),
-    ]
-
-    for icon, title, desc in steps:
-        st.markdown(f"""
-<div class="guide-step">
-  <div class="guide-step-num">{icon}</div>
-  <div>
-    <h4 style="color:#0f3460;margin:0 0 6px 0;">{title}</h4>
-    <p style="color:#6b7a99;margin:0;font-size:0.83rem;line-height:1.6;">{desc}</p>
-  </div>
-</div>""", unsafe_allow_html=True)
-
-    st.markdown("---")
-    st.markdown("#### ❓ 자주 묻는 질문")
-    faqs = [
-        ("API 키는 어디서 받나요?",
-         "Claude: console.anthropic.com / Gemini: aistudio.google.com 에서 무료로 발급받을 수 있습니다."),
-        ("한 번에 얼마나 긴 원고를 검사할 수 있나요?",
-         "5,000~8,000자 단위로 나누어 검사하면 가장 정확합니다."),
-        ("AI패턴이란 무엇인가요?",
-         "AI가 자주 쓰는 상투적 표현을 감지합니다. '~하는 것이었다', '~라는 것을 깨달았다' 등이 대표적입니다."),
-        ("설정을 저장할 수 있나요?",
-         "'책 설정' 탭에서 JSON 파일로 내보내고 나중에 다시 불러올 수 있습니다."),
-        ("라이트/다크 모드는 어떻게 바꾸나요?",
-         "오른쪽 상단 ⋮ 메뉴 → Settings → Theme에서 Light / Dark / System 중 선택하세요."),
-    ]
-    for q, a in faqs:
-        with st.expander(f"Q. {q}"):
-            st.markdown(f"**A.** {a}")
