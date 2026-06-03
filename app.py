@@ -456,21 +456,16 @@ with col_left:
 </div>""", unsafe_allow_html=True)
 
 with col_right:
-    book_label = st.session_state.book_title or "제목 미설정"
-    chapter_name = st.text_input("챕터명", key="chapter_name",
-        placeholder="예: 제1화",
-        label_visibility="collapsed",
-        help="저장 파일명에 사용됩니다.")
-    chapter_label = chapter_name or "미설정"
-    # 프로젝트명 + 챕터명 같은 줄에 나란히
+    book_label    = st.session_state.book_title or "제목 미설정"
+    chapter_label = st.session_state.get("chapter_name","") or "미설정"
     st.markdown(f"""
-<div style='display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:4px'>
-  <span style='background:#e0eaff;color:#0f3460;padding:4px 12px;
-               border-radius:12px;font-size:0.78rem;font-weight:600;white-space:nowrap'>
+<div style='padding-top:14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:flex-end'>
+  <span style='background:#e0eaff;color:#0f3460;padding:5px 14px;
+               border-radius:20px;font-size:0.8rem;font-weight:700;white-space:nowrap'>
     📖 프로젝트: {book_label}
   </span>
-  <span style='background:#f0fdf4;color:#166534;padding:4px 12px;
-               border-radius:12px;font-size:0.78rem;font-weight:600;white-space:nowrap'>
+  <span style='background:#f0fdf4;color:#166534;padding:5px 14px;
+               border-radius:20px;font-size:0.8rem;font-weight:700;white-space:nowrap'>
     📄 챕터명(파일명): {chapter_label}
   </span>
 </div>""", unsafe_allow_html=True)
@@ -479,6 +474,12 @@ with col_right:
         st.rerun()
 
 st.divider()
+
+# 챕터명 입력 (헤더 배지에 실시간 반영)
+chapter_name = st.text_input("📄 챕터명 (파일명용)",
+    placeholder="예: 제1화, chapter_01",
+    key="chapter_name",
+    help="입력하면 위 헤더 배지에 바로 반영됩니다. 저장 파일명으로 사용됩니다.")
 
 # ════════════════════════════════════════════════════════════
 # STEP 1: 원고 입력 & 품질 검사
