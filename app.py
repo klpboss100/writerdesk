@@ -353,9 +353,10 @@ with st.sidebar:
     # 문체 스타일 다중선택
     style_list = st.multiselect("문체 스타일",
         ["표준 현대어","고어/사극체","방언 포함","대화체"],
-        default=st.session_state.get("book_style_list",["표준 현대어"]),
+        default=[x for x in st.session_state.get("book_style_list",["표준 현대어"])
+                 if x in ["표준 현대어","고어/사극체","방언 포함","대화체"]],
         key="book_style_list",
-        help="복수 선택 가능\n고어/사극체: 하오체 허용\n방언 포함: 사투리 허용",
+        help="복수 선택 가능\n표준 현대어: 일반 소설\n고어/사극체: 하오체 허용\n방언 포함: 사투리 허용\n대화체: 대화 형식 문장",
         label_visibility="collapsed")
     st.session_state.book_style = ", ".join(style_list) if style_list else "표준 현대어"
     sb_card_end()
@@ -710,16 +711,14 @@ if st.session_state.manuscript_checked:
         f"<p style='font-size:15px;font-weight:600;color:#0f3460;margin:4px 0'>글자 수: {len(checked):,}자</p>",
         unsafe_allow_html=True)
 
-    c1,c2 = st.columns(2)
+    c1, c2 = st.columns(2)
     with c1:
         st.download_button("💾 최종 원고 다운로드",
             data=checked.encode("utf-8"),
             file_name=f"{chapter_name or '원고'}_{datetime.now().strftime('%Y%m%d_%H%M')}.txt",
             mime="text/plain", use_container_width=True)
     with c2:
-        if st.button("🔬 심층 분석으로 이동", use_container_width=True):
-            st.session_state["go_analysis"] = True
-            st.rerun()
+        st.info("💡 아래 STEP 3, 4에서 심층분석·대사검사를 선택적으로 사용하세요.")
 
 # ════════════════════════════════════════════════════════════
 # STEP 3: 심층 분석 (선택사항)
