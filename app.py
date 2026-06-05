@@ -93,9 +93,9 @@ def build_analysis_prompt(manuscript, cfg, check_opts):
   "issues": [
     {{
       "original": "원고에서 정확히 찾을 수 있는 텍스트",
-      "suggestion": "수정 제안",
-      "type": "맞춤법|AI패턴|어색함|반복단어|시대오류|말투불일치",
-      "reason": "이유 설명"
+      "suggestion": "원본을 대체할 실제 문장이나 단어만 작성. '삭제 제안', '~로 대체', '~하는 것이 좋습니다' 같은 설명 절대 금지. 여러 대안 문장을 제안할 경우 ① ② ③ 형식으로 나열. 삭제가 필요한 경우라도 삭제 후의 자연스러운 대체 문장을 제안할 것.",
+      "type": "맞춤법|AI패턴|어색함|반복단어",
+      "reason": "이유를 한 줄로 간결하게"
     }}
   ],
   "summary": "전체 분석 요약 2~3줄",
@@ -104,9 +104,7 @@ def build_analysis_prompt(manuscript, cfg, check_opts):
     "spelling": 0,
     "ai_pattern": 0,
     "awkward": 0,
-    "repeat_words": 0,
-    "era_error": 0,
-    "char_consistency": 0
+    "repeat_words": 0
   }}
 }}
 
