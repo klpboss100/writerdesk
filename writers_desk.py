@@ -302,11 +302,24 @@ with st.sidebar:
 
     # ── API 설정 ─────────────────────────
     st.markdown(card("#0f3460","#1a5276","🔑 API 설정 · 타인 노출 주의"), unsafe_allow_html=True)
+
+    # Streamlit Cloud Secrets 자동 로드
+    secret_key = ""
+    try:
+        secret_key = (st.secrets.get("ANTHROPIC_API_KEY","") or
+                      st.secrets.get("GEMINI_API_KEY","") or
+                      st.secrets.get("API_KEY",""))
+    except:
+        pass
+
     if IS_CLOUD:
-        api_key = st.text_input("", value="", type="password",
-                                 placeholder="AIzaSy... / sk-ant-... / sk-...",
+        default_val = secret_key  # Secrets에서 자동 로드
+        api_key = st.text_input("", value=default_val, type="password",
+                                 placeholder="AIzaSy... / sk-ant-... (Secrets 미설정시 직접 입력)",
                                  label_visibility="collapsed", key="api_key_input",
-                                 help="Gemini: AIzaSy...\nClaude: sk-ant-...\nOpenAI: sk-...")
+                                 help="Streamlit Cloud → Settings → Secrets 에서\nANTHROPIC_API_KEY 또는 GEMINI_API_KEY 설정 시 자동 입력됩니다")
+        if secret_key:
+            st.success("🔐 Secrets에서 API 키 자동 로드됨")
     else:
         api_key = st.text_input("", value=cfg.get("api_key",""), type="password",
                                  placeholder="AIzaSy... / sk-ant-... / sk-...",
