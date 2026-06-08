@@ -28,10 +28,10 @@ def load_config():
         except:
             pass
     return {"api_key": "", "api_type": "gemini", "novel_era": "현대",
-            "novel_styles": ["표준 현대어"], "characters": [], "allowed_words": [],
+            "novel_styles": ["표준 현대어"], "allowed_words": [],
             "forbidden_words": [], "check_options": {
                 "spelling": True, "ai_pattern": True, "awkward": True,
-                "repeat_words": True, "era_error": True, "char_consistency": True
+                "repeat_words": True
             }}
 
 def save_config(cfg):
@@ -49,19 +49,13 @@ def detect_api_type(key: str) -> str:
 # AI 분석 함수
 # ══════════════════════════════════════════
 def build_analysis_prompt(manuscript, cfg, check_opts):
-    characters = cfg.get("characters", [])
     allowed    = cfg.get("allowed_words", [])
     forbidden  = cfg.get("forbidden_words", [])
     era        = cfg.get("novel_era", "현대")
     styles     = cfg.get("novel_styles", ["표준 현대어"])
 
-    char_info = ""
-    if characters:
-        char_info = "등장인물:\n" + "\n".join(
-            [f"- {c['name']}: {c.get('role','')} / {c.get('speech','')}" for c in characters])
-
     allowed_info   = f"허용 단어 (오류 아님): {', '.join(allowed)}" if allowed else ""
-    forbidden_info = f"금지 단어 (시대 오류): {', '.join(forbidden)}" if forbidden else ""
+    forbidden_info = f"금지 단어 (오류로 표시): {', '.join(forbidden)}" if forbidden else ""
 
     checks = []
     if check_opts.get("spelling"):      checks.append("1. 맞춤법·문법 오류")
@@ -74,7 +68,6 @@ def build_analysis_prompt(manuscript, cfg, check_opts):
 ## 소설 정보
 - 시대 배경: {era}
 - 문체 스타일: {', '.join(styles)}
-{char_info}
 {allowed_info}
 {forbidden_info}
 
@@ -84,18 +77,15 @@ def build_analysis_prompt(manuscript, cfg, check_opts):
 ## 판단 기준
 - 등록된 허용 단어는 절대 오류로 처리하지 마세요
 - 등록된 금지 단어가 나오면 반드시 오류로 표시하세요
-- 시대 배경에 맞는 표현은 오류가 아닙니다
-- 등장인물 이름은 오류가 아닙니다
-- 캐릭터 등록 말투와 다른 대사는 일관성 문제로 표시하세요
 
 반드시 아래 JSON만 출력하세요:
 {{
   "issues": [
     {{
       "original": "원고에서 정확히 찾을 수 있는 텍스트",
-      "suggestion": "원본을 대체할 실제 문장이나 단어만 작성. '삭제 제안', '~로 대체', '~하는 것이 좋습니다' 같은 설명 절대 금지. 여러 대안 문장을 제안할 경우 ① ② ③ 형식으로 나열. 삭제가 필요한 경우라도 삭제 후의 자연스러운 대체 문장을 제안할 것.",
+      "suggestion": "수정 제안",
       "type": "맞춤법|AI패턴|어색함|반복단어",
-      "reason": "이유를 한 줄로 간결하게"
+      "reason": "이유 설명"
     }}
   ],
   "summary": "전체 분석 요약 2~3줄",
@@ -300,24 +290,11 @@ with st.sidebar:
 
     # ── API 설정 ─────────────────────────
     st.markdown(card("#0f3460","#1a5276","🔑 API 설정 · 타인 노출 주의"), unsafe_allow_html=True)
-
-    # Streamlit Cloud Secrets 자동 로드
-    secret_key = ""
-    try:
-        secret_key = (st.secrets.get("ANTHROPIC_API_KEY","") or
-                      st.secrets.get("GEMINI_API_KEY","") or
-                      st.secrets.get("API_KEY",""))
-    except:
-        pass
-
     if IS_CLOUD:
-        default_val = secret_key  # Secrets에서 자동 로드
-        api_key = st.text_input("", value=default_val, type="password",
-                                 placeholder="AIzaSy... / sk-ant-... (Secrets 미설정시 직접 입력)",
+        api_key = st.text_input("", value="", type="password",
+                                 placeholder="AIzaSy... / sk-ant-... / sk-...",
                                  label_visibility="collapsed", key="api_key_input",
-                                 help="Streamlit Cloud → Settings → Secrets 에서\nANTHROPIC_API_KEY 또는 GEMINI_API_KEY 설정 시 자동 입력됩니다")
-        if secret_key:
-            st.success("🔐 Secrets에서 API 키 자동 로드됨")
+                                 help="Gemini: AIzaSy...\nClaude: sk-ant-...\nOpenAI: sk-...")
     else:
         api_key = st.text_input("", value=cfg.get("api_key",""), type="password",
                                  placeholder="AIzaSy... / sk-ant-... / sk-...",
@@ -372,8 +349,6 @@ with st.sidebar:
         cfg["check_options"] = check_opts; save_config(cfg)
     st.markdown(CARD_END, unsafe_allow_html=True)
 
-    characters = cfg.get("characters", [])
-
     allowed_list   = cfg.get("allowed_words", [])
     forbidden_list = cfg.get("forbidden_words", [])
 
@@ -383,7 +358,7 @@ with st.sidebar:
 **🚀 빠른 시작**
 1. API Key 입력 (자동 감지)
 2. 책 정보·검사 항목 설정
-3. 등장인물·용어 사전 등록
+3. 용어 사전 등록
 4. 원고 붙여넣기 → 분석 시작
 
 ---
@@ -393,9 +368,8 @@ with st.sidebar:
 
 ---
 **💡 팁**
-- 등장인물 미리 등록 → 이름 오류 방지
 - 허용단어 등록 → 사투리·고유명사 보호
-- 금지단어 등록 → 시대 오류 자동 감지
+- 금지단어 등록 → 오류 자동 감지
         """)
 
 
@@ -498,8 +472,8 @@ with tab_edit:
                 <td style='width:25%;padding:6px 8px;vertical-align:top'>
                   <div style='background:#0f3460;color:white;border-radius:50%;width:28px;height:28px;
                               text-align:center;line-height:28px;font-weight:800;font-size:14px;display:inline-block'>3</div>
-                  <div style='font-size:12px;font-weight:700;color:#0f3460;margin-top:4px'>인물·사전 등록</div>
-                  <div style='font-size:11px;color:#666;margin-top:2px'>등장인물·<br>허용/금지<br>단어 입력</div>
+                  <div style='font-size:12px;font-weight:700;color:#0f3460;margin-top:4px'>용어 사전 등록</div>
+                  <div style='font-size:11px;color:#666;margin-top:2px'>허용/금지<br>단어 입력</div>
                 </td>
                 <td style='width:25%;padding:6px 8px;vertical-align:top'>
                   <div style='background:#0f3460;color:white;border-radius:50%;width:28px;height:28px;
@@ -586,37 +560,29 @@ with tab_edit:
     has_text = bool(manuscript and manuscript.strip())
     btn_label = "🔍 원고 분석 시작" if has_text else "✏️ 원고를 먼저 입력하세요"
 
-    col_q1, col_q2 = st.columns(2)
-    with col_q1:
-        if st.button(btn_label, type="primary" if has_text else "secondary",
-                     disabled=not (api_key and has_text), use_container_width=True):
-            with st.status("🔍 원고 분석 중...", expanded=True) as status:
-                st.write("AI가 원고를 검토하고 있습니다. (30초~1분 소요)")
-                try:
-                    cfg_now = {
-                        "novel_era": novel_era,
-                        "novel_styles": novel_styles,
-                        "characters": cfg.get("characters", []),
-                        "allowed_words": allowed_list,
-                        "forbidden_words": forbidden_list,
-                    }
-                    prompt = build_analysis_prompt(manuscript, cfg_now, check_opts)
-                    result = analyze_manuscript(api_key, api_type, analysis_model, prompt)
-                    st.session_state['analysis_result']  = result
-                    st.session_state['analysis_text']    = manuscript
-                    st.session_state['accepted_fixes']   = {}
-                    st.session_state['issue_filter']     = '전체'
-                    st.session_state.pop('manuscript_checked', None)
-                    n = len(result.get('issues', []))
-                    status.update(label=f"✅ 분석 완료 — {n}개 발견", state="complete")
-                except Exception as e:
-                    status.update(label="❌ 오류 발생", state="error")
-                    st.error(f"❌ {e}")
-    with col_q2:
-        if st.button("⏭️ 검사 건너뛰기", disabled=not has_text, use_container_width=True):
-            st.session_state['manuscript_checked'] = manuscript
-            st.session_state.pop('analysis_result', None)
-            st.rerun()
+    if st.button(btn_label, type="primary" if has_text else "secondary",
+                 disabled=not (api_key and has_text), use_container_width=True):
+        with st.status("🔍 원고 분석 중...", expanded=True) as status:
+            st.write("AI가 원고를 검토하고 있습니다. (30초~1분 소요)")
+            try:
+                cfg_now = {
+                    "novel_era": novel_era,
+                    "novel_styles": novel_styles,
+                    "allowed_words": allowed_list,
+                    "forbidden_words": forbidden_list,
+                }
+                prompt = build_analysis_prompt(manuscript, cfg_now, check_opts)
+                result = analyze_manuscript(api_key, api_type, analysis_model, prompt)
+                st.session_state['analysis_result']  = result
+                st.session_state['analysis_text']    = manuscript
+                st.session_state['accepted_fixes']   = {}
+                st.session_state['issue_filter']     = '전체'
+                st.session_state.pop('manuscript_checked', None)
+                n = len(result.get('issues', []))
+                status.update(label=f"✅ 분석 완료 — {n}개 발견", state="complete")
+            except Exception as e:
+                status.update(label="❌ 오류 발생", state="error")
+                st.error(f"❌ {e}")
 
     # ── 분석 결과 ──────────────────────
     if 'analysis_result' in st.session_state and 'manuscript_checked' not in st.session_state:
@@ -668,8 +634,7 @@ with tab_edit:
 
             # 이슈 목록
             accepted  = st.session_state.get('accepted_fixes', {})
-            color_map = {"맞춤법":"🔴","AI패턴":"🟠","어색함":"🟡",
-                         "반복단어":"🔵","시대오류":"⚫","말투불일치":"🟣"}
+            color_map = {"맞춤법":"🔴","AI패턴":"🟠","어색함":"🟡","반복단어":"🔵"}
             filtered  = [(j,iss) for j,iss in enumerate(issues)
                          if flt=='전체' or iss.get('type')==flt]
 
@@ -894,30 +859,6 @@ with st.expander("🔍 심층 분석 (선택사항)", expanded=False):
 
 
 # ══════════════════════════════════════════
-# 캐릭터 관리 (접이식)
-# ══════════════════════════════════════════
-with st.expander("👤 캐릭터 관리 (선택사항)", expanded=False):
-    st.markdown(step_header("👤", "캐릭터 관리",
-                "등장인물 등록 및 말투 설정"), unsafe_allow_html=True)
-    characters = cfg.get("characters", [])
-    if not characters:
-        st.info("👈 사이드바 '등장인물' 섹션에서 인물을 추가하세요.")
-    else:
-        for i, c in enumerate(characters):
-            with st.expander(f"👤 {c['name']} — {c.get('role','')}", expanded=False):
-                cc1, cc2, cc3 = st.columns(3)
-                with cc1: st.markdown(f"**이름:** {c['name']}")
-                with cc2: st.markdown(f"**역할:** {c.get('role','미설정')}")
-                with cc3: st.markdown(f"**말투:** {c.get('speech','미설정')}")
-                if st.button(f"🗑️ 삭제", key=f"del_char_{i}", use_container_width=True):
-                    characters.pop(i)
-                    cfg["characters"] = characters
-                    save_config(cfg)
-                    st.rerun()
-        st.info(f"총 {len(characters)}명 등록됨")
-
-
-# ══════════════════════════════════════════
 # 책 설정 (접이식)
 # ══════════════════════════════════════════
 with st.expander("⚙️ 책 설정 (선택사항)", expanded=False):
@@ -932,8 +873,8 @@ with st.expander("⚙️ 책 설정 (선택사항)", expanded=False):
         st.metric("시대 배경", novel_era)
         st.metric("문체",      ", ".join(novel_styles))
     with sc3:
-        st.metric("등장인물",  f"{len(cfg.get('characters',[]))}명")
         st.metric("허용 단어", f"{len(allowed_list)}개")
+        st.metric("금지 단어", f"{len(forbidden_list)}개")
 
     st.markdown("---")
     st.markdown("**📚 현재 용어 사전:**")
