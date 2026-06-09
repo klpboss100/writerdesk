@@ -6,6 +6,7 @@ from google import genai
 # 설정
 # ══════════════════════════════════════════
 CONFIG_FILE = "wd_config.json"
+STATE_FILE  = "wd_session.json"
 IS_CLOUD    = os.environ.get('HOME', '') == '/home/appuser'
 
 GEMINI_MODELS  = ["gemini-2.5-pro", "gemini-2.5-flash"]
@@ -38,6 +39,60 @@ def save_config(cfg):
     if not IS_CLOUD:
         json.dump(cfg, open(CONFIG_FILE, "w", encoding="utf-8"),
                   ensure_ascii=False, indent=2)
+
+# ── 세션 자동저장/복원 ──────────────────
+# 저장할 세션 키 목록
+_SESSION_KEYS = [
+    'manuscript', 'analysis_result', 'analysis_text',
+    'accepted_fixes', 'issue_filter', 'manuscript_checked',
+    'tagged_script', 'chapter_title_display', 'deep_result',
+    # 위젯 값 (rerun 후에도 유지)
+    'book_title', 'chapter_title', 'chapter_name',
+    'novel_styles', 'analysis_model',
+]
+
+def save_session():
+    """중요 세션 상태를 파일에 자동저장 (로컬 전용)"""
+    if IS_CLOUD:
+        return
+    data = {}
+    for k in _SESSION_KEYS:
+        if k in st.session_state:
+            val = st.session_state[k]
+            # accepted_fixes 키가 int인 경우 str 변환
+            if k == 'accepted_fixes' and isinstance(val, dict):
+                data[k] = {str(ki): v for ki, v in val.items()}
+            else:
+                data[k] = val
+    try:
+        json.dump(data, open(STATE_FILE, "w", encoding="utf-8"),
+                  ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+def load_session():
+    """앱 시작 시 저장된 세션 상태 복원 (로컬 전용)"""
+    if IS_CLOUD or not os.path.exists(STATE_FILE):
+        return
+    try:
+        data = json.load(open(STATE_FILE, encoding="utf-8"))
+        for k, v in data.items():
+            if k not in st.session_state:
+                # accepted_fixes 키를 int로 복원
+                if k == 'accepted_fixes' and isinstance(v, dict):
+                    st.session_state[k] = {int(ki): vi for ki, vi in v.items()}
+                else:
+                    st.session_state[k] = v
+    except Exception:
+        pass
+
+def clear_session_file():
+    """세션 저장 파일 삭제"""
+    if not IS_CLOUD and os.path.exists(STATE_FILE):
+        try:
+            os.remove(STATE_FILE)
+        except Exception:
+            pass
 
 def detect_api_type(key: str) -> str:
     if key.startswith("AIza"):      return "gemini"
@@ -227,17 +282,24 @@ def convert_to_audio_tags(api_key, api_type, model, manuscript):
 # ══════════════════════════════════════════
 st.set_page_config(page_title="작가의 책상", page_icon="📝", layout="wide")
 
+# ── 세션 복원 (앱 시작 시 1회) ──────────
+if '_state_loaded' not in st.session_state:
+    load_session()
+    st.session_state['_state_loaded'] = True
+
 # 리셋 플래그 처리
 if st.session_state.pop('_pending_reset', False):
     for k in ['manuscript', 'analysis_result', 'analysis_text',
               'accepted_fixes', 'issue_filter', 'manuscript_checked',
               'tagged_script', 'chapter_title_display',
-              'direct_tag_mode', 'deep_result']:
+              'direct_tag_mode', 'deep_result',
+              'book_title', 'chapter_title', 'chapter_name', 'novel_styles']:
         st.session_state.pop(k, None)
     st.session_state['manuscript']         = ""
     st.session_state['chapter_name']       = ""
     st.session_state['chapter_title']      = ""
     st.session_state['project_name_input'] = ""
+    clear_session_file()  # 저장 파일도 삭제
 
 st.markdown("""
 <style>
@@ -321,7 +383,9 @@ with st.sidebar:
 
     # ── 책 정보 ──────────────────────────
     st.markdown(card("#0369a1","#0ea5e9","📁 책 정보"), unsafe_allow_html=True)
-    book_title  = st.text_input("책 제목", value="", placeholder="예: 진우 이야기",
+    book_title  = st.text_input("책 제목",
+                                 value=st.session_state.get("book_title", ""),
+                                 placeholder="예: 진우 이야기",
                                  key="book_title")
     book_genre  = st.selectbox("장르", GENRES, key="book_genre")
     novel_era   = st.text_input("시대 배경",
@@ -332,8 +396,12 @@ with st.sidebar:
     if not IS_CLOUD and novel_era != cfg.get("novel_era",""):
         cfg["novel_era"] = novel_era; save_config(cfg)
     novel_styles = st.multiselect("문체 스타일", STYLES,
-                                   default=["표준 현대어"], key="novel_styles",
+                                   default=st.session_state.get("novel_styles",
+                                       cfg.get("novel_styles", ["표준 현대어"])),
+                                   key="novel_styles",
                                    help="복수 선택 가능")
+    if not IS_CLOUD and novel_styles != cfg.get("novel_styles", []):
+        cfg["novel_styles"] = novel_styles; save_config(cfg)
     st.markdown(CARD_END, unsafe_allow_html=True)
 
     # ── 검사 설정 ────────────────────────
@@ -495,7 +563,7 @@ with tab_edit:
     col_ch1, col_ch2 = st.columns([2, 2])
     with col_ch1:
         chapter_title = st.text_input("📌 챕터명 (파일명용)",
-                                       value="",
+                                       value=st.session_state.get("chapter_title", ""),
                                        placeholder="예: 제3화, 제1장 훈련소",
                                        key="chapter_title",
                                        help="헤더에 표시되는 챕터명")
@@ -503,7 +571,7 @@ with tab_edit:
             st.session_state['chapter_title_display'] = chapter_title
     with col_ch2:
         chapter_name = st.text_input("💾 저장 파일명",
-                                      value="",
+                                      value=st.session_state.get("chapter_name", ""),
                                       placeholder="예: chapter_03",
                                       key="chapter_name",
                                       help="파일 저장 시 사용되는 이름")
@@ -886,3 +954,8 @@ with st.expander("⚙️ 책 설정 (선택사항)", expanded=False):
         st.markdown("  ".join([f"`{w}`" for w in forbidden_list]))
     if not allowed_list and not forbidden_list:
         st.info("👈 사이드바 '용어 사전'에서 단어를 추가하세요.")
+
+# ══════════════════════════════════════════
+# 세션 자동저장 (매 rerun 마다)
+# ══════════════════════════════════════════
+save_session()
