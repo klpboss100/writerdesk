@@ -2,6 +2,8 @@
 
 # API 키 포함 — 절대 커밋 금지
 wd_config.json
+# Streamlit 비밀 보관함 (키 보관 — 절대 커밋 금지)
+.streamlit/secrets.toml
 # 로컬 세션 상태
 wd_session.json
 

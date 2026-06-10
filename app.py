@@ -339,8 +339,23 @@ CARD_END = "</div></div>"
 # ══════════════════════════════════════════
 # 사이드바
 # ══════════════════════════════════════════
+def get_secret_api_key():
+    """비밀 보관함에서 API 키를 읽는다.
+    PC: .streamlit/secrets.toml  /  인터넷: Streamlit Cloud의 Secrets 설정.
+    Claude(ANTHROPIC) 우선, 없으면 Gemini. 둘 다 없으면 빈 문자열."""
+    try:
+        if "ANTHROPIC_API_KEY" in st.secrets:
+            return st.secrets["ANTHROPIC_API_KEY"]
+        if "GEMINI_API_KEY" in st.secrets:
+            return st.secrets["GEMINI_API_KEY"]
+    except Exception:
+        pass
+    return ""
+
+
 with st.sidebar:
     cfg = load_config()
+    secret_key = get_secret_api_key()
 
     # 필수설정 헤더
     st.markdown("""
@@ -353,16 +368,18 @@ with st.sidebar:
     # ── API 설정 ─────────────────────────
     st.markdown(card("#0f3460","#1a5276","🔑 API 설정 · 타인 노출 주의"), unsafe_allow_html=True)
     if IS_CLOUD:
-        api_key = st.text_input("", value="", type="password",
+        api_key = st.text_input("", value=secret_key, type="password",
                                  placeholder="AIzaSy... / sk-ant-... / sk-...",
                                  label_visibility="collapsed", key="api_key_input",
                                  help="Gemini: AIzaSy...\nClaude: sk-ant-...\nOpenAI: sk-...")
     else:
-        api_key = st.text_input("", value=cfg.get("api_key",""), type="password",
+        default_key = secret_key if secret_key else cfg.get("api_key","")
+        api_key = st.text_input("", value=default_key, type="password",
                                  placeholder="AIzaSy... / sk-ant-... / sk-...",
                                  label_visibility="collapsed", key="api_key_input",
                                  help="Gemini: AIzaSy...\nClaude: sk-ant-...\nOpenAI: sk-...")
-        if api_key != cfg.get("api_key",""):
+        # 시크릿을 안 쓸 때만 기존 파일 저장 방식 유지
+        if not secret_key and api_key != cfg.get("api_key",""):
             cfg["api_key"] = api_key
             save_config(cfg)
 
