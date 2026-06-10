@@ -8,6 +8,7 @@ wd_session.json
 # Windows 실행 스크립트 (로컬 전용)
 writerdesk.bat
 writerdesk_start.vbs
+웹동기화.bat
 
 # Claude Code 로컬 설정/문서
 .claude/
