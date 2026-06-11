@@ -133,12 +133,23 @@ def build_analysis_prompt(manuscript, cfg, check_opts):
 - 등록된 허용 단어는 절대 오류로 처리하지 마세요
 - 등록된 금지 단어가 나오면 반드시 오류로 표시하세요
 
+## suggestion 작성 규칙 (반드시 지킬 것 — 매우 중요)
+- "suggestion"에는 원고에 그대로 가져다 쓸 수 있는 **완성된 대체 문장(또는 단어)**만 작성하세요.
+- 절대 비워두지 마세요. 절대 "삭제 권장", "표현 유지", "수정 가능", "수정 요망", "그대로 두어도 됨",
+  "~로 바꾸는 것이 좋습니다", "~을 수정하세요" 같은 설명·지시·평가 문구를 쓰지 마세요.
+- 최소 1개, 가능하면 2개의 구체적인 대안 문장을 제시하세요.
+- 대안이 2개 이상일 경우 다음 형식으로 작성하세요: "① 대안 문장A ② 대안 문장B"
+- 예시:
+  - 올바른 예: "그의 눈빛이 그 마음을 대신했다"
+  - 올바른 예 (복수안): "① 진우가 천천히 고개를 끄덕였다 ② 진우는 말없이 고개만 끄덕였다"
+  - 잘못된 예: "삭제 제안", "자연스럽게 수정", "이 문장을 다듬어 보세요", ""(빈 문자열)
+
 반드시 아래 JSON만 출력하세요:
 {{
   "issues": [
     {{
       "original": "원고에서 정확히 찾을 수 있는 텍스트",
-      "suggestion": "수정 제안",
+      "suggestion": "원고에 바로 대체해 넣을 수 있는 완성된 문장 1~2개 (① ② 형식 가능, 설명/지시문 금지, 빈 값 금지)",
       "type": "맞춤법|AI패턴|어색함|반복단어",
       "reason": "이유 설명"
     }}
@@ -211,11 +222,23 @@ def analyze_with_claude(api_key, prompt, model):
             result = _json.loads(r.read())
         return safe_parse_json(result["content"][0]["text"])
 
+def sanitize_issues(result):
+    """suggestion이 비어있거나 모호한 경우 원본 문장으로 대체 (빈 제안 방지)"""
+    vague_markers = ["삭제 제안", "삭제 권장", "표현 유지", "수정 가능", "수정 요망",
+                     "그대로 두", "수정하세요", "다듬어", "자연스럽게 수정",
+                     "바꾸는 것이 좋습니다", "고려해", "검토해"]
+    for issue in result.get("issues", []):
+        sugg = (issue.get("suggestion") or "").strip()
+        if not sugg or any(m in sugg for m in vague_markers):
+            issue["suggestion"] = issue.get("original", "")
+    return result
+
 def analyze_manuscript(api_key, api_type, model, prompt):
     if api_type == "claude":
-        return analyze_with_claude(api_key, prompt, model)
+        result = analyze_with_claude(api_key, prompt, model)
     else:
-        return analyze_with_gemini(api_key, prompt, model)
+        result = analyze_with_gemini(api_key, prompt, model)
+    return sanitize_issues(result)
 # ══════════════════════════════════════════
 # 오디오 태그 변환
 # ══════════════════════════════════════════
